@@ -155,6 +155,7 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin-right: 6p
 .result .row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 17px; }
 .result .row b { color: var(--amber); font-family: Inter, sans-serif; }
 .result .big-ok { color: #4ce07a; font-size: 20px; margin: 10px 0; }
+.result .story-end { color: #c0a0ff; font-size: 14px; line-height: 1.5; margin: 12px 0; border-left: 3px solid #c0a0ff; padding-left: 10px; }
 .result .big-bad { color: #ff5a4a; font-size: 20px; margin: 10px 0; }
 .shop { min-width: min(640px, 94vw); }
 .shop-money { font-size: 18px; margin-bottom: 14px; }
@@ -167,6 +168,11 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin-right: 6p
 .shop-item.new { border-color: #4ce07a; position: relative; }
 .shop-item.new::after { content: 'NEU'; position: absolute; top: 8px; right: 8px; font: 800 10px Inter, sans-serif; color: #0b0b0b; background: #4ce07a; padding: 2px 6px; }
 .shop-day { font-size: 12px; color: var(--bone-dim); margin: -4px 0 10px; }
+.shop-item.owned { border-color: rgba(106,209,255,.45); }
+.shop-item .si-owned { font: 600 10px Inter, sans-serif; color: #6ad1ff; margin-left: 4px; }
+.shop-sms { font: 13px/1.45 Inter, sans-serif; color: var(--bone); background: rgba(70,110,180,.14); border-left: 3px solid #6ad1ff; padding: 8px 12px; margin: 0 0 12px; }
+.shop-sms b { color: #6ad1ff; }
+.shop-sms:empty { display: none; }
 .shop-item .si-ico { font-size: 28px; }
 .shop-item .si-name { font-size: 17px; }
 .shop-item .si-desc { font-size: 12px; color: var(--bone-dim); line-height: 1.4; min-height: 34px; }

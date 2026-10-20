@@ -16,6 +16,7 @@ export const LOOT = {
   doll:    { name: 'Porzellanpuppe', val: [60, 110], mass: 1, fragile: 1.0, sound: 'glass', shape: { type: 'box', x: 0.2, y: 0.42, z: 0.14 }, rarity: 7 },
   clock:   { name: 'Taschenuhr', val: [80, 140], mass: 0.3, fragile: 0.6, sound: 'metal', shape: { type: 'cyl', r: 0.07, h: 0.04 }, rarity: 5 },
   toolbox: { name: 'Werkzeugkiste', val: [35, 70], mass: 7, fragile: 0.1, sound: 'metal', shape: { type: 'box', x: 0.55, y: 0.25, z: 0.22 }, rarity: 8 },
+  tape:    { name: 'Tonband 1987', val: [66, 99], mass: 0.5, fragile: 0.5, sound: 'metal', shape: { type: 'box', x: 0.22, y: 0.14, z: 0.07 }, rarity: 3, lore: true },
   idol:    { name: 'Goldenes Idol', val: [220, 380], mass: 6, fragile: 0.35, sound: 'metal', shape: { type: 'box', x: 0.25, y: 0.5, z: 0.25 }, rarity: 2, rare: true },
   boeller: { name: 'Böller', val: [0, 0], mass: 0.4, fragile: 0, sound: 'soft', shape: { type: 'cyl', r: 0.06, h: 0.22 }, rarity: 0, tool: true },
   polen:   { name: 'Polenböller', val: [0, 0], mass: 0.9, fragile: 0, sound: 'soft', shape: { type: 'cyl', r: 0.1, h: 0.3 }, rarity: 0, tool: true },
@@ -23,7 +24,7 @@ export const LOOT = {
 /** Sprengkörper: Zündzeit, Lärm-Radius, Stärke (1 = normaler Böller) */
 export const EXPLOSIVES = { boeller: { fuse: 2.6, noise: 85, power: 1 }, polen: { fuse: 3.2, noise: 160, power: 5 } };
 
-export const ICONS = { vase: '🏺', radio: '📻', teddy: '🧸', lantern: '🏮', camera: '📷', skull: '💀', tv: '📺', jewels: '💎', jar: '🫙', doll: '🪆', clock: '⏱️', toolbox: '🧰', idol: '🗿', boeller: '🧨', polen: '💥' };
+export const ICONS = { vase: '🏺', radio: '📻', teddy: '🧸', lantern: '🏮', camera: '📷', skull: '💀', tv: '📺', jewels: '💎', jar: '🫙', doll: '🪆', clock: '⏱️', toolbox: '🧰', idol: '🗿', tape: '📼', boeller: '🧨', polen: '💥' };
 
 export function pickLootType(rnd, kind) {
   const entries = Object.entries(LOOT).filter(([, d]) => !d.tool);
@@ -129,6 +130,12 @@ export function makeItemMesh(type) {
       add(new THREE.BoxGeometry(0.55, 0.22, 0.22), M('tbox', 0xa02010, { roughness: 0.5, metalness: 0.5 }), 0, -0.015, 0);
       add(new THREE.BoxGeometry(0.3, 0.03, 0.04), darkMetal, 0, 0.11, 0);
       break;
+    case 'tape': {
+      add(new THREE.BoxGeometry(0.22, 0.14, 0.07), M('tapeBody', 0x1c1a18, { roughness: 0.6 }));
+      add(new THREE.BoxGeometry(0.16, 0.05, 0.072), M('tapeLabel', 0xe8dcb0, { roughness: 0.9 }), 0, 0.035, 0);
+      for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.03, 0.03, 0.074, 10), M('tapeReel', 0x6a4a2a, { roughness: 0.5, metalness: 0.3 }), s * 0.05, -0.02, 0, Math.PI / 2);
+      break;
+    }
     case 'idol':
       add(new THREE.CylinderGeometry(0.1, 0.12, 0.08, 8), gold, 0, -0.21, 0);
       add(new THREE.CylinderGeometry(0.06, 0.09, 0.22, 8), gold, 0, -0.06, 0);

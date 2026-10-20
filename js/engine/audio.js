@@ -2,6 +2,8 @@
 // Enthält 3D-Positionsaudio, Mikrofon-Pegelmessung und Proximity-Voice-Chat.
 
 const rand = (a, b) => a + Math.random() * (b - a);
+// Party-Musik im Van: Lautstärke im Laderaum / draußen und Dämpfung (Tiefpass) draußen
+const PARTY_VOL_IN = 1.0, PARTY_VOL_OUT = 0.7, PARTY_LP_OUT = 1400;
 
 export class AudioSys {
   constructor() {
@@ -439,9 +441,10 @@ export class AudioSys {
   startPartyMusic(pos) {
     if (!this.ctx || this._party) return;
     const c = this.ctx;
-    const pan = this._panner(pos, 2.5, 60); pan.rolloffFactor = 1.8;
-    const lp = this._filter('lowpass', 700, 0.8); lp.connect(pan);
-    const bus = c.createGain(); bus.gain.setValueAtTime(0.0001, this.t); bus.gain.exponentialRampToValueAtTime(0.32, this.t + 2); bus.connect(lp);
+    // Lauter als früher: höhere Grundlautstärke, weniger Dämpfung draußen, größere Hörweite
+    const pan = this._panner(pos, 4, 80); pan.rolloffFactor = 1.2;
+    const lp = this._filter('lowpass', PARTY_LP_OUT, 0.8); lp.connect(pan);
+    const bus = c.createGain(); bus.gain.setValueAtTime(0.0001, this.t); bus.gain.exponentialRampToValueAtTime(PARTY_VOL_OUT, this.t + 2); bus.connect(lp);
     const bpm = 126, step = 60 / bpm / 4;
     const roots = [55.0, 43.65, 65.41, 49.0];                              // A – F – C – G
     const chords = [[220, 261.6, 329.6], [174.6, 220, 261.6], [261.6, 329.6, 392], [196, 246.9, 293.7]];
@@ -478,8 +481,9 @@ export class AudioSys {
   setPartyInside(inside) {
     const p = this._party; if (!p || p.inside === inside) return;
     p.inside = inside;
-    p.lp.frequency.setTargetAtTime(inside ? 16000 : 700, this.t, 0.15);
-    p.pan.rolloffFactor = inside ? 0.6 : 1.8;
+    p.lp.frequency.setTargetAtTime(inside ? 16000 : PARTY_LP_OUT, this.t, 0.15);
+    p.bus.gain.setTargetAtTime(inside ? PARTY_VOL_IN : PARTY_VOL_OUT, this.t, 0.2);
+    p.pan.rolloffFactor = inside ? 0.4 : 1.2;
   }
   stopPartyMusic() {
     const p = this._party; if (!p) return;

@@ -13,7 +13,10 @@ Im Wald ist etwas, und es hört zu.
 - **Mikrofon-Erkennung** (optional): Monster hören, wenn du sprichst; dazu Voice-Chat, bei dem du nahe Mitspieler lauter hörst
 - **Server-Browser:** öffentliche Räume mit Namen, private Räume per Code, Max-Spieler, Kicken, Einstieg in laufende Spiele
 - **Story-Intro**: läuft beim allerersten Spielen automatisch (ohne Überspringen), danach nur noch über „Story ansehen“
-- **Shop mit Tages-Freischaltung**: jeder geschaffte Tag schaltet neue Gadgets frei (bis Tag 7), z. B. Polenböller, Crane-Deal (+Geld), Monster-Radar, Laufschuhe, Quote senken
+- **Shop mit Tages-Freischaltung**: jeder geschaffte Tag schaltet neue Gadgets frei (bis Tag 7), z. B. Item-Scanner, Polenböller, Crane-Deal (+Geld), Monster-Radar, Laufschuhe, Quote senken. Gadgets funktionieren erst, wenn sie gekauft sind (Regeln zentral in `js/game/shop.js`)
+- **Verstecken in den Camp-Hütten**: in Hütten und der Lodge können dich die Monster nicht sehen, Geräusche dringen nur gedämpft nach draußen
+- **Story**: Mr. Crane schreibt nach jeder Nacht eine SMS, seltene **Tonbänder von 1987** erzählen, was damals im Camp passiert ist
+- **Easter Eggs**: ein paar Geheimnisse sind versteckt …
 - **Polenböller** (V): 5× stärkere Explosion, verscheucht Monster im Umkreis
 - **Van als Safe-Zone**: Schiebetür offen, im Laderaum können Monster dich weder sehen noch hören – mit Party-Lights und Party-Musik
 - **Neue Sounds**: Fanfare bei geschafftem Tag, Van fährt weg, Shop-Musik, Radar-Piepen, große Explosion
@@ -58,7 +61,7 @@ Dann http://localhost:5173 öffnen.
 | E / G / Linksklick | Aufheben / Ablegen / Werfen |
 | 1 2 3 / Mausrad | Slot wechseln |
 | F | Taschenlampe |
-| Q | Scanner (zeigt Beute) |
+| Q | Item-Scanner (zeigt Beute, erst im Shop kaufen) |
 | B | Böller werfen (lockt Monster weg) |
 | V | Polenböller werfen (5× Explosion, verscheucht Monster) |
 | H (halten, am Van) | Abfahren |

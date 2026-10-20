@@ -599,6 +599,22 @@ export class World {
     return Math.abs(lx) < 1.0 && lz > -2.3 && lz < 1.1;
   }
 
+  /** In einer Camp-Hütte oder der Lodge (Versteck: Monster können dich dort nicht sehen).
+   *  Maße passen zu structures.cabin(): Innenraum = Grundfläche minus Wandstärke. */
+  inHideout(x, y, z) {
+    if (!this._hideouts) {
+      const mk = (h, hw, hd) => ({ x: h.x, z: h.z, c: Math.cos(h.rot), s: Math.sin(h.rot), hw, hd, floor: this.height(h.x, h.z), r2: hw * hw + hd * hd });
+      this._hideouts = [...this.cabins.map((c) => mk(c, 2.8, 2.3)), mk(this.lodge, 5.3, 3.3)];
+    }
+    for (const h of this._hideouts) {
+      const dx = x - h.x, dz = z - h.z;
+      if (dx * dx + dz * dz > h.r2) continue;
+      const lx = dx * h.c - dz * h.s, lz = dx * h.s + dz * h.c;
+      if (Math.abs(lx) < h.hw && Math.abs(lz) < h.hd && y > h.floor + 0.15) return true;
+    }
+    return false;
+  }
+
   inVanZone(x, z, margin = 0) {
     const v = this.vanZone;
     const dx = x - v.x, dz = z - v.z, c = Math.cos(v.rot), s = Math.sin(v.rot);

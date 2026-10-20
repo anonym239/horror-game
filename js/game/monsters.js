@@ -226,9 +226,12 @@ export class MonsterAI {
 
   get radius() { return this.type === 'crawler' ? 0.4 : 0.45; }
 
+  /** Kann dieser Spieler überhaupt gejagt werden? Im Van-Laderaum (safe) und in Camp-Hütten (hidden) nicht. */
+  static huntable(p) { return p.alive && !p.inVan && !p.hidden; }
+
   _pickRoam(players) {
     const w = this.world, r = this.rnd;
-    const alive = players.filter((p) => p.alive && !p.inVan);
+    const alive = players.filter(MonsterAI.huntable);
     if (alive.length && r() < 0.35 + this.night * 0.08) {
       const p = alive[Math.floor(r() * alive.length)];
       this.goal = { x: p.pos.x + (r() - 0.5) * 40, z: p.pos.z + (r() - 0.5) * 40 };
@@ -280,7 +283,7 @@ export class MonsterAI {
       const watched = this._observed(players);
       let best = null, bd = Infinity;
       for (const p of players) {
-        if (!p.alive || p.inVan) continue;
+        if (!MonsterAI.huntable(p)) continue;
         const d = this.pos.distanceTo(p.pos); if (d < bd) { bd = d; best = p; }
       }
       if (watched || !best) { this.anim = 0; return; }
@@ -293,7 +296,7 @@ export class MonsterAI {
       // Wahrnehmung
       let seen = null, sd = Infinity;
       for (const p of players) {
-        if (!p.alive || p.inVan) continue;
+        if (!MonsterAI.huntable(p)) continue;
         const d = this.pos.distanceTo(p.pos);
         if (d < sd && this._canSee(p)) { seen = p; sd = d; }
       }
@@ -306,8 +309,9 @@ export class MonsterAI {
       } else if (this.state === 'chase') {
         this.timer += dt;
         const t = players.find((p) => p.id === this.target);
-        if (t && t.alive && !t.inVan && this.timer < 2.5) this.lastSeen = t.pos.clone(); // kurzes "Nachspüren"
-        if (this.timer > 4 || !t || !t.alive || t.inVan) { this.state = 'investigate'; this.goal = { x: this.lastSeen.x, z: this.lastSeen.z }; this.timer = 0; }
+        const hunt = t && MonsterAI.huntable(t);
+        if (hunt && this.timer < 2.5) this.lastSeen.copy(t.pos); // kurzes "Nachspüren"
+        if (this.timer > 4 || !hunt) { this.state = 'investigate'; this.goal = { x: this.lastSeen.x, z: this.lastSeen.z }; this.timer = 0; }
       }
       if (this.state !== 'chase' && this.state !== 'retreat') {
         const hear = this.type === 'crawler' ? 0.6 : 1;
@@ -323,7 +327,7 @@ export class MonsterAI {
       if (this.state === 'chase') {
         const t = players.find((p) => p.id === this.target);
         goal = this.lastSeen; speed = (5.1 + nightBoost) * base;
-        if (t && t.alive) {
+        if (t && MonsterAI.huntable(t)) {
           const d = this.pos.distanceTo(t.pos);
           if (d < 1.5 && Math.abs(t.pos.y - this.pos.y) < 1.6) { this.anim = 3; ctx.onKill(t, this); this._retreat(); return; }
         }

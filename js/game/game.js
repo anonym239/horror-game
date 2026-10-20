@@ -6,8 +6,11 @@ import { MonsterView, MonsterAI, MONSTER_INFO } from './monsters.js';
 import { LOOT, ICONS, EXPLOSIVES, pickLootType, makeItemMesh } from './items.js';
 import { Physics } from '../engine/physics.js';
 import { mulberry32, clamp, damp, angleLerp } from '../engine/rng.js';
-import { $, SHOP, UPG_DEFAULT, esc } from '../ui/ui.js';
+import { $, esc } from '../ui/ui.js';
+import { shopItem, UPG_DEFAULT, sanitizeUpg, checkBuy, level, owns } from './shop.js';
 import { Scares } from './scares.js';
+import { EasterEggs } from './eastereggs.js';
+import { craneMessage, tapeLore } from '../story.js';
 
 export const NIGHT_LEN = 360;
 const SNAP_DT = 1 / 15, STATE_DT = 1 / 20;
@@ -60,12 +63,13 @@ export class Game {
       this.physics.onPreStep = () => this._applyHolds();
     }
     this.scares = new Scares(this);
+    this.eggs = new EasterEggs(this);
+    this.tapesHeard = 0;
     this.input.onLockChange = (locked) => this._onLock(locked);
     if (this.isHost) this.startNight(1, true);
   }
 
   get myHoldId() { const me = this.players && this.players.get(this.myId); return me ? me.inv[me.sel] || null : null; }
-  set myHoldId(v) { /* abgeleitet aus dem Inventar */ }
 
   // ======================= Spieler =======================
   _addPlayer(id, name, color) {
@@ -255,8 +259,8 @@ export class Game {
     }
     const rnd = mulberry32(this.seed + n * 977 + Math.floor(Math.random() * 1e6));
     const np = this.players.size;
-    const quota = Math.round(((200 + 190 * (n - 1) + 45 * (n - 1) ** 2) * (1 + 0.45 * (np - 1)) * (1 - 0.1 * (this.upg.quota || 0))) / 10) * 10;
-    const nightLen = NIGHT_LEN + 45 * (this.upg.overtime || 0);
+    const quota = Math.round(((200 + 190 * (n - 1) + 45 * (n - 1) ** 2) * (1 + 0.45 * (np - 1)) * (1 - 0.1 * level(this.upg, 'quota'))) / 10) * 10;
+    const nightLen = NIGHT_LEN + 45 * level(this.upg, 'overtime');
     let event = null;
     if (n >= 2 && rnd() < 0.3) event = rnd() < 0.5 ? 'bloodmoon' : 'fog';
     const spots = this.world.lootSpots.slice();
@@ -297,7 +301,6 @@ export class Game {
     for (const it of [...this.items.keys()]) this._removeItem(it);
     for (const mo of this.monsters.values()) mo.view.dispose(this.engine.scene);
     this.monsters.clear();
-    this.myHoldId = null;
     this.ui.clearLabels();
   }
 
@@ -305,9 +308,9 @@ export class Game {
     this._clearNight();
     this.nightLen = m.nightLen || NIGHT_LEN;
     this.night = m.n; this.quota = m.quota; this.event = m.event; this.banked = 0; this.timeLeft = this.nightLen;
-    this.money = m.money; this.upg = { ...UPG_DEFAULT(), ...m.upg }; this.boellers = m.boellers; this.polen = m.polen || 0;
+    this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0;
     if (m.stats) this.stats = { ...m.stats };
-    this.quotaAnnounced = false; this._deadT = 0;
+    this.quotaAnnounced = false; this._deadT = 0; this.scanCd = 0;
     for (const it of m.items) this._createItem(...it);
     this.world.setEvent(m.event);
     const idx = this.roster.findIndex((r) => r.isLocal);
@@ -328,6 +331,8 @@ export class Game {
     let hint = newM ? `${MONSTER_INFO[newM].name}: ${MONSTER_INFO[newM].desc}` : '';
     if (m.event === 'bloodmoon') hint = '🩸 BLUTMOND – Beute ist mehr wert, aber sie sind zahlreicher. ' + hint;
     if (m.event === 'fog') hint = '🌫️ DICHTER NEBEL – ihr seht kaum etwas. ' + hint;
+    const egg = this.eggs.introHint(m.n);
+    if (egg) hint = egg + (hint ? ' ' + hint : '');
     $('introMonster').textContent = hint;
     $('hudEvent').textContent = m.event === 'bloodmoon' ? 'BLUTMOND' : m.event === 'fog' ? 'NEBEL' : '';
     const intro = $('intro');
@@ -346,10 +351,11 @@ export class Game {
 
   _tips() {
     const tips = [
-      [7, '💡 <b>Q</b> = Scanner: zeigt Beute in der Nähe mit Wert'],
+      [7, '💡 Beute suchen! Den <b>Item-Scanner (Q)</b> kannst du nach der ersten Nacht im Shop kaufen'],
       [16, '💡 <b>E</b> aufheben · <b>1 2 3</b> Slot wählen · <b>G</b> ablegen · <b>Klick</b> werfen'],
       [26, '💡 Alles in die <b style="color:#ffb547">gelbe Zone am Van</b> legen. Dort lädt auch die Taschenlampe.'],
       [38, '💡 <b>Leise sein!</b> Sprinten, Stöße und dein Mikrofon locken den Blassen an.'],
+      [52, '💡 In den <b>Camp-Hütten</b> können dich die Monster nicht sehen – perfekt zum Verstecken.'],
     ];
     clearTimeout(this._tipTO);
     const run = (i) => {
@@ -383,7 +389,6 @@ export class Game {
     this.phase = 'end';
     this.audio.stopAmbience(); this.audio.setDanger(0);
     this.engine.fx.danger = 0;
-    this.myHoldId = null;
     this.scare = null; this.engine.fx.scare = 0;
     $('death').classList.add('hidden');
     $('endTitle').textContent = res.success ? `NACHT ${res.night} ÜBERSTANDEN` : 'QUOTE VERFEHLT';
@@ -394,6 +399,7 @@ export class Game {
     html += `<div class="row"><span>Quote</span><b>${res.quota} $</b></div>`;
     if (res.dead.length) html += `<div class="row"><span>Gestorben</span><span class="red">${res.dead.map(esc).join(', ')}</span></div>`;
     if (res.lost.length) html += `<div class="row"><span>Zurückgelassen</span><span class="red">${res.lost.map(esc).join(', ')}</span></div>`;
+    if (res.success && res.night === 7) html += `<p class="story-end">📱 <b>Mr. Crane:</b> „Wir sind quitt.“ … Der Van biegt trotzdem nicht in die Stadt ab. Er fährt zurück zum Camp.</p>`;
     if (res.success) html += `<p class="hint">Alle Toten sind nächste Nacht wieder dabei. Gleich geht's zum Shop …</p>`;
     $('endBody').innerHTML = html;
     this.ui.modal('endcard', true);
@@ -410,10 +416,11 @@ export class Game {
   _onShop(m) {
     const paid = this.phase === 'shop' && m.money < this.money;
     this.phase = 'shop';
-    this.money = m.money; this.upg = { ...UPG_DEFAULT(), ...m.upg }; this.boellers = m.boellers; this.polen = m.polen || 0;
+    this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0;
     this.ui.modal('endcard', false);
     this.ui.modal('shop', true);
     this.ui.shop(this.money, this.upg, { boellers: this.boellers, polen: this.polen }, this.night, this.isHost, (k) => this.buy(k));
+    $('shopSms').innerHTML = `📱 <b>Mr. Crane:</b> ${craneMessage(this.night)}`;
     if (paid) this.audio.cash();
     this.audio.startShopMusic();
     this.input.unlock();
@@ -424,12 +431,12 @@ export class Game {
   }
   _hostBuy(k) {
     if (this.phase !== 'shop') return;
-    const it = SHOP.find((s) => s.k === k); if (!it || it.day > this.night) return; // noch nicht freigeschaltet
-    const lvl = it.consumable ? 0 : this.upg[k] || 0;
-    const price = it.price(lvl);
-    if (this.money < price || (!it.consumable && lvl >= it.max)) return;
-    this.money -= price;
-    if (it.consumable) this[it.store] += it.add; else this.upg[k] = lvl + 1;
+    // Einzige Stelle, an der gekauft wird: Tag-Freischaltung, Voraussetzungen, Max-Stufe und Geld prüft checkBuy
+    const c = checkBuy(k, { upg: this.upg, money: this.money, day: this.night });
+    if (!c.ok) return;
+    const it = shopItem(k);
+    this.money -= c.price;
+    if (it.consumable) this[it.store] += it.add; else this.upg[k] = c.lvl + 1;
     this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, bought: k });
   }
 
@@ -465,10 +472,6 @@ export class Game {
     mesh.traverse((o) => { o.userData.itemId = id; });
     const it = { id, type, def, value, max: value, mesh, heldBy: null, tp: new THREE.Vector3(x, y, z), tq: new THREE.Quaternion(), lastHit: 0, fuse: EXPLOSIVES[type] ? EXPLOSIVES[type].fuse : 0, dirty: true };
     if (this.isHost) it.body = this.physics.addItem(def.shape, def.mass, { x, y, z }, it);
-    if (type === 'idol') {
-      const glow = new THREE.PointLight(0xffc040, 0, 3);
-      void glow; // (kein Extra-Licht: konstante Lichtanzahl)
-    }
     this.items.set(id, it);
     if (id >= this.nextItemId) this.nextItemId = id + 1;
     return it;
@@ -578,7 +581,7 @@ export class Game {
     it.lastHit = now;
     let dmg = 0;
     if (it.def.fragile > 0 && v > 3.2 && it.value > 0) {
-      dmg = Math.min(it.value, Math.round((v - 3.2) * it.def.fragile * it.max * 0.07 * (1 - 0.3 * (this.upg.padding || 0))));
+      dmg = Math.min(it.value, Math.round((v - 3.2) * it.def.fragile * it.max * 0.07 * (1 - 0.3 * level(this.upg, 'padding'))));
       it.value -= dmg; it.dirty = true;
     }
     const p = body.position;
@@ -631,7 +634,7 @@ export class Game {
         continue;
       }
       if (!it.heldBy && w.inVanZone(b.position.x, b.position.z) && b.position.y < w.height(b.position.x, b.position.z) + 2.2) {
-        it.value = Math.round(it.value * (1 + 0.1 * (this.upg.haggle || 0))); // Crane-Deal
+        it.value = Math.round(it.value * (1 + 0.1 * level(this.upg, 'haggle'))); // Crane-Deal
         this.banked += it.value; this.money += it.value; this.stats.loot += it.value;
         if (!this.stats.best || it.value > this.stats.best.v) this.stats.best = { name: it.def.name, v: it.value };
         this.emit({ t: 'dep', id: it.id, v: it.value, n: it.def.name, x: b.position.x, y: b.position.y, z: b.position.z });
@@ -669,7 +672,6 @@ export class Game {
     if (r) r.alive = false;
     if (m.id === this.myId) {
       this.local.alive = false;
-      this.myHoldId = null;
       const mo = this.monsters.get(m.m);
       this.scare = { t: 0, mo };
       if (mo) mo.view.forceAnim = 3;
@@ -810,7 +812,8 @@ export class Game {
   _lookItem() {
     const cam = this.engine.camera, col = this.world.collision;
     this.raycaster.setFromCamera({ x: 0, y: 0 }, cam);
-    const meshes = [];
+    const meshes = this._lookMeshes || (this._lookMeshes = []); // Array wiederverwenden (läuft jeden Frame)
+    meshes.length = 0;
     for (const it of this.items.values()) if (!it.heldBy) meshes.push(it.mesh);
     const hits = this.raycaster.intersectObjects(meshes, true);
     const d = this.raycaster.ray.direction;
@@ -833,6 +836,12 @@ export class Game {
 
   _grab(id) {
     this.audio.pickup();
+    const it = this.items.get(id);
+    if (it && it.def.lore && !it.heard) { // Tonband: Aufnahme von 1987 abspielen
+      it.heard = true;
+      this.audio.radioStatic(null, 0.5);
+      this.ui.toast(tapeLore(this.tapesHeard++), '#c0a0ff', 7);
+    }
     if (this.isHost) this._hostGrab(this.myId, id); else this.net.toHost({ t: 'grab', id });
   }
   _select(i) {
@@ -857,14 +866,20 @@ export class Game {
   }
 
   _scan() {
-    const lvl = this.upg.scanner || 0;
-    this.scanCd = 9 - lvl * 2.5;
-    const range = 24 + lvl * 12;
+    const lvl = level(this.upg, 'scanner');
+    if (!lvl) { this.audio.denied(); this.ui.toast('📡 Kein Item-Scanner – erst im Shop kaufen', '#888', 1.6); return; }
+    this.scanCd = 9 - (lvl - 1) * 2.5;
+    const range = 24 + (lvl - 1) * 12;
+    const gold = owns(this.upg, 'goldscan');
     const entries = [];
     for (const it of this.items.values()) {
-      if (it.def.tool) continue;
+      // Werkzeuge und Beute, die schon jemand im Inventar hat, nicht anzeigen
+      if (it.def.tool || it.heldBy) continue;
       if (it.mesh.position.distanceTo(this.local.pos) > range) continue;
-      entries.push({ pos: it.mesh.position.clone(), obj: it.mesh, html: this.upg.goldscan && it.value >= 150 ? `<span style="color:#ffd040">✨ ${it.def.name} <b>${it.value} $</b></span>` : `${it.def.name} <b>${it.value} $</b>` });
+      entries.push({
+        pos: it.mesh.position.clone(), obj: it.mesh, gone: () => !!it.heldBy || !this.items.has(it.id),
+        html: gold && it.value >= 150 ? `<span style="color:#ffd040">✨ ${it.def.name} <b>${it.value} $</b></span>` : `${it.def.name} <b>${it.value} $</b>`,
+      });
     }
     const vz = this.world.vanZone;
     entries.push({ pos: new THREE.Vector3(vz.x, vz.y + 2.5, vz.z), html: '🚐 <b>VAN</b> – Abgabe' });
@@ -913,9 +928,11 @@ export class Game {
         if (!r.isLocal) r.pos.lerp(r.tPos, 1 - Math.exp(-14 * dt));
         r.safe = this.world.inSafeZone(r.pos.x, r.pos.z) && r.pos.y > this.world.height(r.pos.x, r.pos.z) + 0.3;
         r.inVan = r.safe || this.world.inVanZone(r.pos.x, r.pos.z, 3);
+        r.hidden = this.world.inHideout(r.pos.x, r.pos.y, r.pos.z); // Camp-Hütte: Monster sehen dich nicht
       }
       this._hostItems(dt);
-      for (const r of this.players.values()) if (r.alive && !r.safe && r.loud > 0.05) this._noises.push({ x: r.pos.x, z: r.pos.z, r: r.loud * 40 });
+      // Geräusche aus Hütten dringen nur gedämpft nach draußen
+      for (const r of this.players.values()) if (r.alive && !r.safe && r.loud > 0.05) this._noises.push({ x: r.pos.x, z: r.pos.z, r: r.loud * (r.hidden ? 20 : 40) });
       if (this._boomAt && (this._boomAt.t -= dt) > 0) this._noises.push({ x: this._boomAt.x, z: this._boomAt.z, r: this._boomAt.r });
       const ctx = { players: this.roster, noises: this._noises, onKill: (p, ai) => this._hostKill(p, ai), onEvent: (k, d) => { if (k === 'roar') this.emit({ t: 'ev', k, ...d }); } };
       for (const mo of this.monsters.values()) {
@@ -989,9 +1006,15 @@ export class Game {
     this._radar(dt, playing);
     this._localSafe = this.local.alive && this.phase === 'play' && this.world.inSafeZone(this.local.pos.x, this.local.pos.z) && this.local.pos.y > this.world.height(this.local.pos.x, this.local.pos.z) + 0.3;
     this.audio.setPartyInside(this._localSafe);
+    const hidden = this.local.alive && this.phase === 'play' && this.world.inHideout(this.local.pos.x, this.local.pos.y, this.local.pos.z);
+    if (hidden !== this._localHidden) {
+      this._localHidden = hidden;
+      if (hidden && playing) this.ui.toast('🏠 Versteckt – in der Hütte können dich die Monster nicht sehen', '#6ad1ff', 2.2);
+    }
     this.boomLight.intensity = Math.max(0, this.boomLight.intensity - dt * 160);
 
     this.scares.update(playing ? dt : 0);
+    this.eggs.update(dt);
     if (this.scare) this._updateScare(dt);
     else if (!this.local.alive && this.phase === 'play') this._spectate(dt);
 
@@ -1004,7 +1027,7 @@ export class Game {
 
   /** Monster-Radar (Shop-Upgrade): piept schneller, je näher ein aktives Monster ist. */
   _radar(dt, playing) {
-    if (!this.upg.radar || !playing || !this.local.alive) { this.ui.set('hudRadar', 'text', ''); return; }
+    if (!owns(this.upg, 'radar') || !playing || !this.local.alive) { this.ui.set('hudRadar', 'text', ''); return; }
     let best = Infinity;
     for (const mo of this.monsters.values()) if (mo.view.anim >= 1) best = Math.min(best, mo.view.pos.distanceTo(this.local.pos));
     if (best > 30) { this.ui.set('hudRadar', 'text', '📟 Radar: ruhig'); this.ui.set('hudRadar', 'class:cd', true); return; }
@@ -1035,8 +1058,9 @@ export class Game {
     ui.set('hudMoney', 'text', String(this.money));
     ui.set('hudBoeller', 'text', String(this.boellers));
     ui.set('hudPolen', 'text', String(this.polen));
-    ui.set('hudScan', 'text', this.scanCd > 0 ? `Scanner ${Math.ceil(this.scanCd)}s` : 'Q  Scanner bereit');
-    ui.set('hudScan', 'class:cd', this.scanCd > 0);
+    const hasScan = owns(this.upg, 'scanner');
+    ui.set('hudScan', 'text', !hasScan ? '🔒 Scanner (Shop)' : this.scanCd > 0 ? `Scanner ${Math.ceil(this.scanCd)}s` : 'Q  Scanner bereit');
+    ui.set('hudScan', 'class:cd', !hasScan || this.scanCd > 0);
     const vz = this.world.vanZone;
     const dx = vz.x - p.pos.x, dz = vz.z - p.pos.z, dist = Math.hypot(dx, dz);
     if (dist > 8 && p.alive) {
@@ -1044,7 +1068,7 @@ export class Game {
       rel = ((rel + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
       const arrows = ['↑', '↖', '←', '↙', '↓', '↘', '→', '↗'];
       const idx = ((Math.round(rel / (Math.PI / 4)) % 8) + 8) % 8;
-      ui.set('hudVan', 'text', `${arrows[idx]} Van ${Math.round(dist)} m`);
+      ui.set('hudVan', 'text', `${this._localHidden ? '🏠 Versteckt · ' : ''}${arrows[idx]} Van ${Math.round(dist)} m`);
     } else ui.set('hudVan', 'text', !p.alive ? '' : this._localSafe ? '🛡️ SAFE ZONE – Monster sehen & hören dich nicht' : '🚐 Am Van – Beute in die gelbe Zone legen · Im Laderaum bist du sicher');
     const me = this.players.get(this.myId);
     if (me) {
@@ -1069,6 +1093,7 @@ export class Game {
     this.engine.scene.remove(this.boomLight);
     this.engine.camera.remove(this.local.flash, this.local.flash.target, this.local.torch);
     this.scares.dispose();
+    this.eggs.dispose();
     clearTimeout(this._fanfareTO);
     this.audio.stopShopMusic(); this.audio.stopPartyMusic();
     this.world.setParty(false);

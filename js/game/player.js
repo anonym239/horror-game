@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { clamp, damp } from '../engine/rng.js';
 import { getQ, mat } from '../engine/renderer.js';
 import { PLAY_RADIUS } from '../world/world.js';
+import { UPG_DEFAULT } from './shop.js';
 
 const RADIUS = 0.35;
 
@@ -23,7 +24,8 @@ export class LocalPlayer {
     this.stepPhase = 0;
     this.noise = 0;
     this.carryMass = 0;
-    this.upg = { stamina: 0, battery: 0, strength: 0, scanner: 0 };
+    this.upg = UPG_DEFAULT();
+    this._fwd = new THREE.Vector3();
     this.shake = 0;
     this.landHurt = 0;
     this.frozen = false;
@@ -69,7 +71,8 @@ export class LocalPlayer {
   }
 
   get height() { return this.crouch ? 1.05 : 1.8; }
-  get forward() { const c = Math.cos(this.pitch); return new THREE.Vector3(-Math.sin(this.yaw) * c, Math.sin(this.pitch), -Math.cos(this.yaw) * c); }
+  /** Blickrichtung (wiederverwendeter Vektor – nicht speichern, sondern sofort benutzen bzw. kopieren). */
+  get forward() { const c = Math.cos(this.pitch); return this._fwd.set(-Math.sin(this.yaw) * c, Math.sin(this.pitch), -Math.cos(this.yaw) * c); }
 
   update(dt, opts = {}) {
     const inp = this.input, col = this.world.collision;
