@@ -1,0 +1,28 @@
+# Netlify: reine statische Seite – kein Build nötig. Einfach Repo verbinden oder Ordner hochziehen.
+[build]
+  publish = "."
+  command = "echo 'Hollow Pines: kein Build noetig'"
+
+# Desktop-Quellcode nicht ausliefern
+[[redirects]]
+  from = "/desktop/*"
+  to = "/index.html"
+  status = 404
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Mikrofon (Voice-Chat) und Vollbild erlauben
+    Permissions-Policy = "microphone=(self), fullscreen=(self)"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/vendor/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hollow Pines</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 4 10 44h16v16h12V44h16z' fill='%23c0141e'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="vendor/fonts/fonts.css" />
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js",
+        "three/addons/utils/BufferGeometryUtils.js": "./vendor/BufferGeometryUtils.js",
+        "cannon-es": "./vendor/cannon-es.js"
+      }
+    }
+  </script>
+  <script src="vendor/peerjs.min.js"></script>
+  <script src="vendor/mqtt.min.js"></script>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <!-- Laden -->
+  <div id="loading" class="screen show">
+    <div class="load-title">HOLLOW PINES</div>
+    <div class="load-bar"><div id="loadFill"></div></div>
+    <div id="loadText" class="load-text">Wald wird gepflanzt …</div>
+  </div>
+
+  <!-- Hauptmenü -->
+  <div id="menu" class="screen">
+    <div class="menu-left">
+      <div class="title" data-text="HOLLOW PINES">HOLLOW PINES</div>
+      <div class="subtitle">Koop-Horror im Wald · 1–4 Spieler</div>
+      <label class="name-row">Dein Name <input id="nameInput" maxlength="14" spellcheck="false" /></label>
+      <div class="menu-buttons">
+        <button class="btn primary" id="btnSolo">Einzelspieler</button>
+        <button class="btn" id="btnMulti">Mehrspieler · Server-Browser <span id="menuRooms" class="pill"></span></button>
+        <button class="btn ghost" id="btnStory">▶ Story ansehen</button>
+        <button class="btn ghost" id="btnSettings">Einstellungen</button>
+        <button class="btn ghost" id="btnControls">Steuerung</button>
+      </div>
+      <div id="stats" class="stats"></div>
+    </div>
+    <div class="menu-right">
+      <div class="lore">
+        <h3>Camp Hollow Pines</h3>
+        <p>1987 verschwanden hier zwölf Kinder. Seitdem steht das Camp leer – fast.</p>
+        <p>Euer Auftraggeber zahlt gut für alles, was ihr aus den Hütten holt. Erfüllt jede Nacht die <b>Quote</b>, bringt die Beute zum <b>Van</b> und verschwindet vor 4 Uhr.</p>
+        <p class="warn">Sie hören euch. Auch über das Mikrofon.</p>
+      </div>
+    </div>
+    <div class="version">HollowEngine · WebGL2 · <span id="gpuInfo"></span></div>
+  </div>
+
+  <!-- Server-Browser -->
+  <div id="browser" class="screen">
+    <div class="browser">
+      <div class="br-head">
+        <button class="btn small ghost" id="btnBrBack">← Menü</button>
+        <h2>Mehrspieler</h2>
+        <span id="brStatus" class="br-status">verbinde …</span>
+      </div>
+      <div class="br-grid">
+        <section class="panel br-list">
+          <div class="br-title"><h3>Öffentliche Räume</h3><span id="brCount" class="hint"></span></div>
+          <div class="br-row br-hdr"><span>Raum</span><span>Spieler</span><span>Status</span><span></span></div>
+          <div id="brRooms" class="br-rooms"></div>
+        </section>
+        <aside class="br-side">
+          <section class="panel">
+            <h3>Raum erstellen</h3>
+            <label>Raumname <input id="crName" maxlength="28" spellcheck="false" /></label>
+            <label>Max. Spieler
+              <select id="crMax"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option></select>
+            </label>
+            <div class="seg" role="group" aria-label="Sichtbarkeit">
+              <button type="button" id="crPublic" class="on">🌐 Öffentlich</button>
+              <button type="button" id="crPrivate">🔒 Privat</button>
+            </div>
+            <p class="hint" id="crHint">Erscheint in der Liste. Jeder kann beitreten.</p>
+            <button class="btn primary" id="btnCreate">Raum erstellen</button>
+          </section>
+          <section class="panel">
+            <h3>Mit Code beitreten</h3>
+            <div class="join-row">
+              <input id="joinCode" placeholder="CODE" maxlength="5" spellcheck="false" />
+              <button class="btn" id="btnJoin">Beitreten</button>
+            </div>
+          </section>
+          <section class="panel">
+            <label class="check"><input type="checkbox" id="brMic" /> 🎤 Mit Mikrofon spielen</label>
+            <p class="hint">Aus = kein Mikrofon nötig (z.B. Schul-PC). Du hörst die anderen trotzdem, und die Monster hören nur deine Schritte.</p>
+          </section>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lobby -->
+  <div id="lobby" class="screen">
+    <div class="panel lobby-panel">
+      <h2 id="lobbyName">Lobby</h2>
+      <div class="lobby-meta"><span id="lobbyVis" class="pill"></span><span id="lobbyMax" class="hint"></span></div>
+      <div class="code-box">
+        <span>Raum-Code</span>
+        <div id="roomCode" class="room-code">-----</div>
+        <button class="btn small" id="btnCopy">Kopieren</button>
+      </div>
+      <ul id="lobbyPlayers" class="player-list"></ul>
+      <div class="mic-row">
+        <button class="btn small" id="btnMicLobby">🎤 Mikrofon aktivieren</button>
+        <div class="meter"><div id="lobbyMic"></div></div>
+      </div>
+      <div class="lobby-actions">
+        <button class="btn ghost" id="btnLeaveLobby">Verlassen</button>
+        <button class="btn ghost" id="btnStoryLobby">▶ Story</button>
+        <button class="btn primary" id="btnStart">Spiel starten</button>
+      </div>
+      <div id="lobbyHint" class="hint"></div>
+    </div>
+  </div>
+
+  <!-- Einstellungen -->
+  <div id="settings" class="modal">
+    <div class="panel">
+      <h2>Einstellungen</h2>
+      <label>Grafik
+        <select id="optQuality">
+          <option value="auto">Automatisch</option>
+          <option value="low">Niedrig (schwache Geräte)</option>
+          <option value="medium">Mittel</option>
+          <option value="high">Hoch</option>
+        </select>
+      </label>
+      <label>Lautstärke <input type="range" id="optVolume" min="0" max="1" step="0.05" /></label>
+      <label>Maus-Empfindlichkeit <input type="range" id="optSens" min="0.2" max="3" step="0.1" /></label>
+      <label class="check"><input type="checkbox" id="optMic" /> Mikrofon benutzen (Voice-Chat &amp; Monster hören dich)</label>
+      <div class="mic-row"><span>Pegel</span><div class="meter"><div id="setMic"></div></div></div>
+      <label class="check"><input type="checkbox" id="optFps" /> FPS anzeigen</label>
+      <label class="check"><input type="checkbox" id="optFull" /> Automatisch Vollbild beim ersten Klick</label>
+      <p class="hint">Grafikänderungen werden beim nächsten Laden aktiv.</p>
+      <div class="row-end"><button class="btn" id="btnApplyReload">Übernehmen &amp; neu laden</button><button class="btn primary" id="btnCloseSettings">Fertig</button></div>
+    </div>
+  </div>
+
+  <div id="controls" class="modal">
+    <div class="panel">
+      <h2>Steuerung</h2>
+      <div class="keys">
+        <div><kbd>W A S D</kbd> Bewegen</div>
+        <div><kbd>Shift</kbd> Sprinten</div>
+        <div><kbd>Leertaste</kbd> Springen</div>
+        <div><kbd>C</kbd> Ducken (leiser)</div>
+        <div><kbd>E</kbd> Aufheben</div>
+        <div><kbd>G</kbd> Ablegen</div>
+        <div><kbd>1 2 3</kbd> / <kbd>Mausrad</kbd> Slot wechseln</div>
+        <div><kbd>Linksklick</kbd> Werfen</div>
+        <div><kbd>F</kbd> Taschenlampe</div>
+        <div><kbd>Q</kbd> Scanner (zeigt Beute)</div>
+        <div><kbd>B</kbd> Böller werfen (lockt Monster weg)</div>
+        <div><kbd>H</kbd> (halten, am Van) Abfahren</div>
+        <div><kbd>M</kbd> Mikrofon stumm</div>
+        <div><kbd>Tab</kbd> Spielerliste</div>
+        <div><kbd>Esc</kbd> Pause</div>
+      </div>
+      <div class="tips">
+        <b>Tipps:</b> Am Van lädt die Taschenlampe auf und Monster kommen nicht nah heran. Zerbrechliches verliert bei Stößen an Wert.
+        Die Puppe erstarrt, solange jemand sie ansieht – mit Licht auch aus größerer Entfernung.
+      </div>
+      <div class="row-end"><button class="btn primary" id="btnCloseControls">Verstanden</button></div>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-tl">
+      <div id="hudNight" class="night">NACHT 1</div>
+      <div id="hudClock" class="clock">22:00</div>
+      <div id="hudEvent" class="event"></div>
+    </div>
+    <div class="hud-tc">
+      <div class="quota-label"><span>QUOTE</span><span id="hudQuota">0 / 0 $</span></div>
+      <div class="quota-bar"><div id="hudQuotaFill"></div></div>
+    </div>
+    <div class="hud-tr"><ul id="hudPlayers"></ul></div>
+    <div class="hud-bl">
+      <div class="bar-row"><span class="ico">⚡</span><div class="bar"><div id="hudStamina"></div></div></div>
+      <div class="bar-row"><span class="ico">🔦</span><div class="bar battery"><div id="hudBattery"></div></div></div>
+      <div class="bar-row"><span class="ico" id="hudMicIco">🎤</span><div class="bar mic"><div id="hudMic"></div></div></div>
+    </div>
+    <div class="hud-br">
+      <div class="money"><span id="hudMoney">0</span> $</div>
+      <div class="boeller">🧨 <span id="hudBoeller">0</span></div>
+      <div id="hudScan" class="scan">Q Scanner</div>
+    </div>
+    <div class="hud-bc"><div id="hudCarry" class="carry"></div><div id="hotbar" class="hotbar"></div><div id="hudVan" class="van-dir"></div></div>
+    <div id="crosshair"></div>
+    <div id="prompt"></div>
+    <div id="leaveProg" class="leave-prog hidden"><div></div><span>Abfahren …</span></div>
+    <div id="fps" class="fps hidden"></div>
+  </div>
+  <div id="labels"></div>
+  <div id="toasts"></div>
+
+  <div id="flash"></div>
+  <div id="fade"></div>
+
+  <div id="intro" class="card hidden">
+    <div id="introNight" class="card-big">NACHT 1</div>
+    <div id="introQuota" class="card-sub"></div>
+    <div id="introMonster" class="card-hint"></div>
+  </div>
+
+  <div id="death" class="card hidden">
+    <div class="card-big red">DU BIST TOT</div>
+    <div class="card-sub" id="deathSub">Du beobachtest die anderen. Klick = nächster Spieler.</div>
+  </div>
+
+  <div id="endcard" class="modal">
+    <div class="panel result">
+      <h2 id="endTitle">NACHT ÜBERSTANDEN</h2>
+      <div id="endBody"></div>
+    </div>
+  </div>
+
+  <div id="shop" class="modal">
+    <div class="panel shop">
+      <h2>Tagsüber im Motel</h2>
+      <div class="shop-money">Kasse: <b><span id="shopMoney">0</span> $</b></div>
+      <div id="shopItems" class="shop-items"></div>
+      <div class="row-end">
+        <span id="shopWait" class="hint"></span>
+        <button class="btn primary" id="btnNextNight">Nächste Nacht ▶</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="gameover" class="modal">
+    <div class="panel result">
+      <h2 class="red">GAME OVER</h2>
+      <div id="overBody"></div>
+      <div class="row-end"><button class="btn primary" id="btnToMenu">Zum Hauptmenü</button><button class="btn" id="btnRetry">Nochmal</button></div>
+    </div>
+  </div>
+
+  <div id="pause" class="modal">
+    <div class="panel">
+      <h2>Pause</h2>
+      <div class="menu-buttons">
+        <button class="btn primary" id="btnResume">Weiterspielen</button>
+        <button class="btn" id="btnPauseSettings">Einstellungen</button>
+        <button class="btn" id="btnPauseControls">Steuerung</button>
+        <button class="btn ghost" id="btnQuit">Spiel verlassen</button>
+      </div>
+      <div id="pauseCode" class="hint"></div>
+      <ul id="pausePlayers" class="player-list small"></ul>
+    </div>
+  </div>
+
+  <div id="message" class="modal">
+    <div class="panel">
+      <h2 id="msgTitle">Hinweis</h2>
+      <p id="msgText"></p>
+      <div class="row-end"><button class="btn primary" id="btnMsgOk">OK</button></div>
+    </div>
+  </div>
+
+  <div id="story" class="story hidden">
+    <div class="lb top"></div><div class="lb bottom"></div>
+    <div id="storyCard" class="story-card"></div>
+    <div id="storySms" class="sms hidden">
+      <div class="sms-head"><span class="sms-avatar">C</span><div><b>Mr. Crane</b><small>unbekannte Nummer · 23:41</small></div></div>
+      <div class="sms-bubble">Ihr schuldet mir 40.000 $. Ihr zahlt es ab. Camp Hollow Pines, Nordstraße, Kilometer 19.</div>
+      <div class="sms-bubble">Jede Nacht eine Quote. Bringt alles Wertvolle zum Van. Keine Polizei.</div>
+      <div class="sms-bubble late">Und seid vor 4 Uhr weg.</div>
+    </div>
+    <div id="storyPaper" class="paper hidden">
+      <div class="paper-head">NORDKURIER · 14. August 1987</div>
+      <div class="paper-title">Ferienlager geschlossen: zwölf Kinder spurlos verschwunden</div>
+      <div class="paper-body">Nach dem rätselhaften Verschwinden von zwölf Kindern aus Camp Hollow Pines hat die Polizei die Suche eingestellt. Ein Betreuer sprach von einer großen, hellen Gestalt mit Geweih zwischen den Bäumen. Die Behörden halten ihn für unglaubwürdig.</div>
+    </div>
+    <div id="storyTitle" class="story-title hidden"><div class="title" data-text="HOLLOW PINES">HOLLOW PINES</div><div class="story-tag">Sammelt. Liefert ab. Überlebt bis 4 Uhr.</div></div>
+    <div id="storySub" class="story-sub"></div>
+    <button id="btnSkipStory" class="btn small skip">Überspringen ▸</button>
+  </div>
+
+  <div id="clickToPlay" class="click-to-play hidden">Klicken zum Spielen</div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

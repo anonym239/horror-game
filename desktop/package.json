@@ -1,0 +1,34 @@
+{
+  "name": "hollow-pines",
+  "productName": "Hollow Pines",
+  "version": "1.0.0",
+  "description": "Koop-Horror im Wald – 1 bis 4 Spieler",
+  "main": "main.js",
+  "author": "anonym239",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.anonym239.hollowpines",
+    "productName": "Hollow Pines",
+    "artifactName": "HollowPines.exe",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "icon.png", "package.json"],
+    "extraResources": [
+      {
+        "from": "..",
+        "to": "game",
+        "filter": ["index.html", "style.css", "js/**/*", "vendor/**/*"]
+      }
+    ],
+    "win": { "target": "portable", "icon": "icon.png" },
+    "portable": { "unicode": true }
+  }
+}
