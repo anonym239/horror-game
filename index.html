@@ -161,6 +161,7 @@
         <div><kbd>F</kbd> Taschenlampe</div>
         <div><kbd>Q</kbd> Scanner (zeigt Beute)</div>
         <div><kbd>B</kbd> Böller werfen (lockt Monster weg)</div>
+        <div><kbd>V</kbd> Polenböller werfen (5× Explosion, verscheucht Monster)</div>
         <div><kbd>H</kbd> (halten, am Van) Abfahren</div>
         <div><kbd>M</kbd> Mikrofon stumm</div>
         <div><kbd>Tab</kbd> Spielerliste</div>
@@ -193,7 +194,8 @@
     </div>
     <div class="hud-br">
       <div class="money"><span id="hudMoney">0</span> $</div>
-      <div class="boeller">🧨 <span id="hudBoeller">0</span></div>
+      <div class="boeller">🧨 <span id="hudBoeller">0</span> &nbsp; 💥 <span id="hudPolen">0</span></div>
+      <div id="hudRadar" class="scan"></div>
       <div id="hudScan" class="scan">Q Scanner</div>
     </div>
     <div class="hud-bc"><div id="hudCarry" class="carry"></div><div id="hotbar" class="hotbar"></div><div id="hudVan" class="van-dir"></div></div>
@@ -230,6 +232,7 @@
     <div class="panel shop">
       <h2>Tagsüber im Motel</h2>
       <div class="shop-money">Kasse: <b><span id="shopMoney">0</span> $</b></div>
+      <div id="shopDay" class="shop-day"></div>
       <div id="shopItems" class="shop-items"></div>
       <div class="row-end">
         <span id="shopWait" class="hint"></span>

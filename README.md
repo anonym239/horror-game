@@ -12,7 +12,11 @@ Im Wald ist etwas, und es hört zu.
 - **Jump Scares**, zufällige Schreckmomente, Blutmond- und Nebelnächte
 - **Mikrofon-Erkennung** (optional): Monster hören, wenn du sprichst; dazu Voice-Chat, bei dem du nahe Mitspieler lauter hörst
 - **Server-Browser:** öffentliche Räume mit Namen, private Räume per Code, Max-Spieler, Kicken, Einstieg in laufende Spiele
-- **Story-Intro**, Shop mit Upgrades, Rekorde
+- **Story-Intro**: läuft beim allerersten Spielen automatisch (ohne Überspringen), danach nur noch über „Story ansehen“
+- **Shop mit Tages-Freischaltung**: jeder geschaffte Tag schaltet neue Gadgets frei (bis Tag 7), z. B. Polenböller, Crane-Deal (+Geld), Monster-Radar, Laufschuhe, Quote senken
+- **Polenböller** (V): 5× stärkere Explosion, verscheucht Monster im Umkreis
+- **Van als Safe-Zone**: Schiebetür offen, im Laderaum können Monster dich weder sehen noch hören – mit Party-Lights und Party-Musik
+- **Neue Sounds**: Fanfare bei geschafftem Tag, Van fährt weg, Shop-Musik, Radar-Piepen, große Explosion
 
 ## Auf Netlify veröffentlichen
 Es ist **kein Build nötig**, die Seite ist rein statisch.
@@ -28,7 +32,11 @@ Mehrspieler funktioniert über das Internet, auch wenn ihr in **verschiedenen Ne
 verbunden (WebRTC), bei Bedarf über Umleitungs-Server (TURN). Einstellbar in `js/config.js`.
 
 ## Windows-Version (.exe)
-`HollowPines.exe` ist eine portable Version ohne Installation. Doppelklick genügt. Sie startet im Vollbild (F11 schaltet um).
+Unter **Releases** gibt es zwei Dateien:
+- `HollowPines-Setup.exe` – Installer mit Desktop- und Startmenü-Verknüpfung (deinstallierbar über „Apps“)
+- `HollowPines.exe` – portable Version ohne Installation. Doppelklick genügt.
+
+Beide starten im Vollbild (F11 schaltet um). Neues Release ohne Git: GitHub → *Actions* → *Release (Windows .exe)* → *Run workflow* → Version eintragen.
 Selbst bauen:
 ```bash
 cd desktop
@@ -52,6 +60,7 @@ Dann http://localhost:5173 öffnen.
 | F | Taschenlampe |
 | Q | Scanner (zeigt Beute) |
 | B | Böller werfen (lockt Monster weg) |
+| V | Polenböller werfen (5× Explosion, verscheucht Monster) |
 | H (halten, am Van) | Abfahren |
 | M | Mikrofon stumm |
 | Esc | Pause (Host: Spieler kicken) |
