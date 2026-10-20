@@ -1,0 +1,46 @@
+# Baut die Windows-Version (HollowPines.exe) und veröffentlicht sie als GitHub-Release.
+# Auslöser: ein Versions-Tag wie v1.0.0 (git tag v1.0.1 && git push --tags) oder manuell unter "Actions".
+name: Release (Windows .exe)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Abhängigkeiten installieren
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+
+      - name: .exe bauen
+        working-directory: desktop
+        run: npx electron-builder --win portable --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Release veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
+          name: Hollow Pines ${{ github.ref_type == 'tag' && github.ref_name || '(neuester Stand)' }}
+          body: |
+            🌲 **Hollow Pines** – Koop-Horror für 1–4 Spieler.
+
+            **Windows:** `HollowPines.exe` herunterladen und doppelklicken (keine Installation nötig, startet im Vollbild).
+            Falls Windows warnt („Der Computer wurde durch Windows geschützt“): *Weitere Informationen* → *Trotzdem ausführen*.
+
+            **Im Browser:** einfach die Netlify-Seite öffnen.
+          files: desktop/dist/HollowPines.exe
+          make_latest: true
