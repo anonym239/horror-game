@@ -48,13 +48,13 @@ export class UI {
   }
 
   /** Scanner-Beschriftungen: entries = [{pos, html}] */
-  scan(entries, dur = 3.5) {
-    this.clearTags();
+  scan(entries, dur = 3.5, keep = false) {
+    if (!keep) this.clearTags();
     for (const e of entries) {
       const el = document.createElement('div');
-      el.className = 'label3d'; el.innerHTML = e.html;
+      el.className = 'label3d' + (e.cls ? ' ' + e.cls : ''); el.innerHTML = e.html;
       this.layer.appendChild(el);
-      this.tags.push({ el, pos: e.pos, t: 0, life: dur, obj: e.obj, gone: e.gone });
+      this.tags.push({ el, pos: e.pos, t: 0, life: dur, obj: e.obj, gone: e.gone, yOff: e.yOff });
     }
   }
   clearTags() { this.tags.forEach((t) => t.el.remove()); this.tags = []; }
@@ -82,7 +82,7 @@ export class UI {
       t.t += dt;
       // Beschriftung verschwindet sofort, wenn die Beute aufgehoben/abgeliefert wurde
       if (t.t > t.life || (t.obj && !t.obj.parent) || (t.gone && t.gone())) { t.el.remove(); this.tags.splice(i, 1); continue; }
-      if (t.obj) t.pos.copy(t.obj.position).y += 0.45;
+      if (t.obj) t.pos.copy(t.obj.position).y += t.yOff ?? 0.45;
       this._project(t.pos, t.el);
       t.el.style.opacity = String(Math.min(1, (t.life - t.t) * 2));
     }
@@ -173,7 +173,7 @@ export class UI {
       const locked = c.reason === 'locked', needs = c.reason === 'requires';
       const owned = !it.consumable && c.lvl > 0;
       const el = document.createElement('div');
-      el.className = 'shop-item' + (locked || needs ? ' locked' : c.ok ? '' : ' off') + (owned ? ' owned' : '') + (it.day === day && day > 1 ? ' new' : '');
+      el.className = 'shop-item' + (locked || needs ? ' locked' : c.ok ? '' : ' off') + (owned ? ' owned' : '') + (it.premium ? ' premium' : '') + (it.day === day && day > 1 ? ' new' : '');
       const priceTxt = locked ? `ab Tag ${it.day}` : needs ? `benötigt ${shopItem(it.requires).name}` : c.reason === 'max' ? 'MAX' : c.price + ' $';
       el.innerHTML = `<div class="si-ico">${locked || needs ? '🔒' : it.ico}</div><div class="si-name">${it.name}${owned ? ' <small class="si-owned">✔ gekauft</small>' : ''}</div><div class="si-desc">${it.desc}</div>
         ${it.consumable ? `<div class="hint">Vorrat: ${stock[it.store] || 0}</div>` : `<div class="si-lvl">${Array.from({ length: it.max }, (_, i) => `<i class="${i < c.lvl ? 'on' : ''}"></i>`).join('')}</div>`}

@@ -5,11 +5,14 @@
 // day: ab welchem geschafften Tag (Nacht) der Artikel im Shop freigeschaltet ist.
 // requires: anderes Upgrade, das vorher gekauft sein muss.
 // consumable: Verbrauchsgut → add = Menge, store = Feld im Spielzustand.
+// premium: besonders teures Gadget (goldener Rahmen im Shop).
 export const SHOP = [
   { k: 'scanner', day: 1, ico: '📡', name: 'Item-Scanner', desc: 'Q: zeigt Beute in der Nähe. Weitere Stufen: mehr Reichweite, kürzere Abklingzeit.', max: 3, price: (l) => [80, 150, 240][l] },
   { k: 'battery', day: 1, ico: '🔋', name: 'Bessere Akkus', desc: 'Taschenlampe hält deutlich länger.', max: 3, price: (l) => 110 + l * 90 },
   { k: 'stamina', day: 1, ico: '🫁', name: 'Kondition', desc: 'Mehr Ausdauer zum Sprinten & Springen.', max: 3, price: (l) => 100 + l * 80 },
+  { k: 'xray', day: 1, ico: '👁️', name: 'Geisterblick-Brille', desc: 'X: Zeigt ALLE Monster kurz durch Wände (rot, mit Entfernung). Stufen: länger sichtbar, kürzere Abklingzeit.', max: 3, price: (l) => [650, 950, 1400][l], premium: true },
   { k: 'boeller', day: 1, ico: '🧨', name: 'Böller ×2', desc: 'Werfen (B): lockt den Blassen weg.', max: 99, price: () => 60, consumable: true, add: 2, store: 'boellers' },
+  { k: 'adren', day: 2, ico: '💉', name: 'Adrenalin-Spritze', desc: 'T: 8 s unendlich Ausdauer und +30 % Tempo. Für die Flucht.', max: 99, price: () => 120, consumable: true, add: 1, store: 'adren' },
   { k: 'strength', day: 2, ico: '💪', name: 'Tragegurte', desc: 'Schwere Beute bremst weniger.', max: 3, price: (l) => 120 + l * 90 },
   { k: 'polen', day: 2, ico: '💥', name: 'Polenböller', desc: 'Werfen (V): 5× Explosion! Verscheucht Monster in der Nähe.', max: 99, price: () => 150, consumable: true, add: 1, store: 'polen' },
   { k: 'padding', day: 3, ico: '📦', name: 'Polsterdecken', desc: 'Zerbrechliche Beute nimmt weniger Schaden.', max: 2, price: (l) => 140 + l * 120 },
@@ -62,3 +65,6 @@ export function checkBuy(k, { upg, money, day }) {
   if (money < price) return { ok: false, reason: 'money', price, lvl };
   return { ok: true, price, lvl };
 }
+
+/** Werte der Geisterblick-Brille je Stufe (1–3): Sichtdauer und Abklingzeit in Sekunden. */
+export const XRAY = { dur: [0, 4, 6, 9], cd: [0, 60, 45, 30] };

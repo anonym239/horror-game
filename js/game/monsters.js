@@ -9,6 +9,8 @@ export const MONSTER_INFO = {
   crawler: { name: 'Der Kriecher', desc: 'Schnell und flach. Folgt Taschenlampen.' },
 };
 
+const XRAY_MAT = new THREE.MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0.6, depthTest: false, depthWrite: false, fog: false });
+
 const limb = (len, r0, r1, m) => {
   const g = new THREE.CylinderGeometry(r1, r0, len, 6);
   g.translate(0, -len / 2, 0);
@@ -131,6 +133,17 @@ export class MonsterView {
     }
     this.eyes = [];
     this.headHeight = 1.65;
+  }
+
+  /** Geisterblick: Monster rot und durch Wände sichtbar zeichnen (nur lokal). */
+  setXray(on) {
+    if (this._xray === on) return;
+    this._xray = on;
+    this.root.traverse((o) => {
+      if (!o.isMesh) return;
+      if (on) { o.userData.mat = o.material; o.material = XRAY_MAT; o.renderOrder = 999; }
+      else if (o.userData.mat) { o.material = o.userData.mat; o.renderOrder = 0; }
+    });
   }
 
   setState(x, y, z, ry, anim, extra = 0) {

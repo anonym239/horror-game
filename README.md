@@ -16,6 +16,9 @@ Im Wald ist etwas, und es hört zu.
 - **Shop mit Tages-Freischaltung**: jeder geschaffte Tag schaltet neue Gadgets frei (bis Tag 7), z. B. Item-Scanner, Polenböller, Crane-Deal (+Geld), Monster-Radar, Laufschuhe, Quote senken. Gadgets funktionieren erst, wenn sie gekauft sind (Regeln zentral in `js/game/shop.js`)
 - **Verstecken in den Camp-Hütten**: in Hütten und der Lodge können dich die Monster nicht sehen, Geräusche dringen nur gedämpft nach draußen
 - **Story**: Mr. Crane schreibt nach jeder Nacht eine SMS, seltene **Tonbänder von 1987** erzählen, was damals im Camp passiert ist
+- **Van-Upgrade**: Discokugel, Kühlbox mit Energy-Drinks (Ausdauer lädt im Laderaum schnell), Radio mit 4 Sendern und Hupe als Monster-Köder
+- **Geisterblick-Brille** (X): teures Premium-Gadget ab Tag 1, zeigt alle Monster rot durch Wände, 3 Stufen
+- **Adrenalin-Spritze** (T): 8 s unendlich Ausdauer und +30 % Tempo
 - **Easter Eggs**: ein paar Geheimnisse sind versteckt …
 - **Polenböller** (V): 5× stärkere Explosion, verscheucht Monster im Umkreis
 - **Van als Safe-Zone**: Schiebetür offen, im Laderaum können Monster dich weder sehen noch hören – mit Party-Lights und Party-Musik
@@ -65,5 +68,9 @@ Dann http://localhost:5173 öffnen.
 | B | Böller werfen (lockt Monster weg) |
 | V | Polenböller werfen (5× Explosion, verscheucht Monster) |
 | H (halten, am Van) | Abfahren |
+| X | Geisterblick-Brille: alle Monster kurz durch Wände sehen (Shop, ab Tag 1) |
+| T | Adrenalin-Spritze (Shop, ab Tag 2) |
+| J (am Van) | Hupe: lockt alle Monster zum Van |
+| R (am Van) | Van-Radio: Party FM, Synthwave 87, Spieluhr, Aus |
 | M | Mikrofon stumm |
 | Esc | Pause (Host: Spieler kicken) |

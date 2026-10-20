@@ -54,11 +54,12 @@ jobs:
             Falls Windows warnt („Der Computer wurde durch Windows geschützt“): *Weitere Informationen* → *Trotzdem ausführen*.
 
             ### Neu in dieser Version
-            - Story läuft beim ersten Spielen automatisch (ohne Überspringen), danach nicht mehr
-            - Shop schaltet jeden geschafften Tag neue Gadgets frei (bis Tag 7)
-            - Polenböller (Taste V): 5× Explosion, verscheucht Monster
-            - Van als Safe-Zone mit Party-Lights und Party-Musik – drinnen sehen und hören dich die Monster nicht
-            - Neue Sounds: Tag geschafft, Van fährt weg, Shop-Musik, Monster-Radar
+            - Geisterblick-Brille (X): teures Premium-Gadget ab Tag 1 – zeigt alle Monster rot durch Wände, 3 Stufen
+            - Van-Upgrade: Discokugel, Kühlbox (Ausdauer lädt schnell), Radio mit 4 Sendern (R), Hupe als Monster-Köder (J)
+            - Adrenalin-Spritze (T): 8 s unendlich Ausdauer und +30 % Tempo
+            - Verstecken in den Camp-Hütten: Monster können dich dort nicht sehen
+            - Item-Scanner muss jetzt im Shop gekauft werden; Scanner-Fehler mit Items im Inventar behoben
+            - Neue Story mit Crane-SMS nach jeder Nacht und Tonbändern von 1987, lautere Van-Musik, Easter Eggs
           files: |
             desktop/dist/HollowPines-Setup.exe
             desktop/dist/HollowPines.exe

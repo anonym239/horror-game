@@ -169,6 +169,9 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin-right: 6p
 .shop-item.new::after { content: 'NEU'; position: absolute; top: 8px; right: 8px; font: 800 10px Inter, sans-serif; color: #0b0b0b; background: #4ce07a; padding: 2px 6px; }
 .shop-day { font-size: 12px; color: var(--bone-dim); margin: -4px 0 10px; }
 .shop-item.owned { border-color: rgba(106,209,255,.45); }
+.shop-item.premium { border-color: #ffd040; background: linear-gradient(160deg, rgba(255,208,64,.12), rgba(255,255,255,.02)); box-shadow: 0 0 18px rgba(255,208,64,.18); }
+.shop-item.premium .si-price { color: #ffd040; }
+.label3d.monster { color: #ff4040; border-color: #ff4040; font-weight: 800; }
 .shop-item .si-owned { font: 600 10px Inter, sans-serif; color: #6ad1ff; margin-left: 4px; }
 .shop-sms { font: 13px/1.45 Inter, sans-serif; color: var(--bone); background: rgba(70,110,180,.14); border-left: 3px solid #6ad1ff; padding: 8px 12px; margin: 0 0 12px; }
 .shop-sms b { color: #6ad1ff; }

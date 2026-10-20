@@ -4,6 +4,7 @@
 const rand = (a, b) => a + Math.random() * (b - a);
 // Party-Musik im Van: Lautstärke im Laderaum / draußen und Dämpfung (Tiefpass) draußen
 const PARTY_VOL_IN = 1.0, PARTY_VOL_OUT = 0.7, PARTY_LP_OUT = 1400;
+const PARTY_STATIONS = ['Party FM', 'Synthwave 87', 'Radio Hollow Pines (Spieluhr)', 'Aus'];
 
 export class AudioSys {
   constructor() {
@@ -461,16 +462,29 @@ export class AudioSys {
       const g = c.createGain(); g.gain.setValueAtTime(vol, at); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
       s.connect(fl); fl.connect(g); g.connect(bus); s.start(at, Math.random()); s.stop(at + dur + 0.02);
     };
+    const box = [880, 0, 1046.5, 0, 987.8, 0, 784, 0, 659.3, 0, 784, 0, 698.5, 0, 0, 0]; // Spieluhr
+    p.station = this._partyStation || 0;
     const tick = () => {
       if (this._party !== p) return;
       while (p.next < this.t + 0.25) {
         const s = p.step, bar = Math.floor(s / 16) % 4, i = s % 16, at = p.next, drop = (s % 128) >= 32;
-        if (i % 4 === 0) osc(150, at, 0.28, 1.0, 'sine', 40);                         // Kick
-        if (i % 4 === 2) osc(roots[bar] * 2, at, step * 1.6, 0.5, 'sawtooth');        // Offbeat-Bass
-        if (i % 2 === 1) noise(at, 0.03, 0.18, 8000);                                 // Hi-Hat
-        if (i === 4 || i === 12) noise(at, 0.15, 0.4, 1800, 'bandpass');             // Clap
-        if (drop && (i === 0 || i === 6 || i === 10)) chords[bar].forEach((f) => osc(f, at, step * 2.5, 0.07, 'sawtooth'));
-        if (drop && lead[i]) osc(lead[i] * 2, at, step * 0.9, 0.05, 'square');
+        if (p.station === 0) { // Party
+          if (i % 4 === 0) osc(150, at, 0.28, 1.0, 'sine', 40);                         // Kick
+          if (i % 4 === 2) osc(roots[bar] * 2, at, step * 1.6, 0.5, 'sawtooth');        // Offbeat-Bass
+          if (i % 2 === 1) noise(at, 0.03, 0.18, 8000);                                 // Hi-Hat
+          if (i === 4 || i === 12) noise(at, 0.15, 0.4, 1800, 'bandpass');             // Clap
+          if (drop && (i === 0 || i === 6 || i === 10)) chords[bar].forEach((f) => osc(f, at, step * 2.5, 0.07, 'sawtooth'));
+          if (drop && lead[i]) osc(lead[i] * 2, at, step * 0.9, 0.05, 'square');
+        } else if (p.station === 1) { // Synthwave: Halftime-Beat, Arpeggio, Bass-Achtel
+          if (i === 0 || i === 10) osc(120, at, 0.35, 0.9, 'sine', 45);
+          if (i === 8) noise(at, 0.25, 0.45, 1200, 'bandpass');
+          if (i % 2 === 0) osc(roots[bar] * 2, at, step * 1.8, 0.35, 'sawtooth');
+          osc(chords[bar][s % 3] * (i % 8 < 4 ? 2 : 4), at, step * 0.9, 0.05, 'square');
+          if (i % 4 === 2) noise(at, 0.02, 0.1, 9000);
+        } else if (p.station === 2) { // Spieluhr – Camp-Gruselsender
+          if (box[i]) { osc(box[i] * 2, at, step * 5, 0.12, 'sine'); osc(box[i] * 4.02, at, step * 2, 0.03, 'sine'); }
+          if (i === 0) osc(roots[bar], at, step * 14, 0.12, 'triangle');
+        }
         p.step++; p.next += step;
       }
     };
@@ -485,6 +499,32 @@ export class AudioSys {
     p.bus.gain.setTargetAtTime(inside ? PARTY_VOL_IN : PARTY_VOL_OUT, this.t, 0.2);
     p.pan.rolloffFactor = inside ? 0.4 : 1.2;
   }
+  /** Van-Radio (R): wechselt den Sender und gibt dessen Namen zurück. */
+  nextPartyStation() {
+    this._partyStation = ((this._partyStation || 0) + 1) % PARTY_STATIONS.length;
+    if (this._party) this._party.station = this._partyStation;
+    this.radioStatic(null, 0.25);
+    return PARTY_STATIONS[this._partyStation];
+  }
+
+  /** Van-Hupe: zwei verstimmte Rechteck-Töne, weit hörbar. */
+  horn(pos) {
+    if (!this.ctx) return;
+    for (const f of [349, 440]) this.tone(f, f * 0.98, 1.1, 0.35, 'square', 0, pos);
+    for (const f of [349, 440]) this.tone(f, f * 0.98, 0.9, 0.3, 'square', 1.3, pos);
+  }
+  /** Geisterblick-Brille: aufsteigender Glitch-Sweep. */
+  xray() {
+    this.tone(200, 2400, 0.5, 0.12, 'sawtooth');
+    this.tone(2400, 300, 0.6, 0.06, 'square', 0.45);
+    this.radioStatic(null, 0.4);
+  }
+  /** Adrenalin: Herzschlag-Doppel und Zischen. */
+  adrenaline() {
+    for (let i = 0; i < 4; i++) { this.tone(70, 40, 0.15, 0.6, 'sine', i * 0.38); this.tone(65, 38, 0.12, 0.45, 'sine', i * 0.38 + 0.16); }
+    this.tone(3000, 600, 0.4, 0.05, 'sawtooth');
+  }
+
   stopPartyMusic() {
     const p = this._party; if (!p) return;
     this._party = null;

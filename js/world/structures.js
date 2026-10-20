@@ -231,6 +231,10 @@ export function van(b, x, z, rot, base) {
     b.box('glowRed', s * 0.85, 1.2, -2.42, 0.15, 0.35, 0.03, { collide: false });
   }
   b.box('metal', 0, 0.55, 2.18, 2.2, 0.22, 0.12, { collide: false });
+  // Einrichtung im Laderaum: Kühlbox mit Energy-Drinks (füllt Ausdauer auf) und Sitzbank
+  b.box('white', -0.7, 0.55, -1.95, 0.45, 0.4, 0.5, { collide: false, tex: 2.2 });
+  b.box('glowHead', -0.7, 0.96, -1.95, 0.47, 0.04, 0.52, { collide: false });
+  b.box('metal', -0.78, 0.55, -0.4, 0.35, 0.42, 1.4, { collide: false });
   // offene Schiebetür: Ladezone rechts (+x)
   b.box('white', 1.12, 0.55, -1.9, 0.06, 1.85, 1.0, { collide: false, tex: 2.2 }); // aufgeschobene Tür
   // Markierung der Abgabezone

@@ -7,7 +7,7 @@ import { LOOT, ICONS, EXPLOSIVES, pickLootType, makeItemMesh } from './items.js'
 import { Physics } from '../engine/physics.js';
 import { mulberry32, clamp, damp, angleLerp } from '../engine/rng.js';
 import { $, esc } from '../ui/ui.js';
-import { shopItem, UPG_DEFAULT, sanitizeUpg, checkBuy, level, owns } from './shop.js';
+import { shopItem, UPG_DEFAULT, sanitizeUpg, checkBuy, level, owns, XRAY } from './shop.js';
 import { Scares } from './scares.js';
 import { EasterEggs } from './eastereggs.js';
 import { craneMessage, tapeLore } from '../story.js';
@@ -30,7 +30,8 @@ export class Game {
     this.phase = 'wait';
     this.night = 0; this.quota = 0; this.banked = 0; this.money = 0; this.timeLeft = NIGHT_LEN;
     this.upg = UPG_DEFAULT();
-    this.boellers = 2; this.polen = 0;
+    this.boellers = 2; this.polen = 0; this.adren = 0;
+    this.xrayT = 0; this.xrayCd = 0; this.adrenT = 0; this.hornCd = 0;
     this.nightLen = NIGHT_LEN; this._radarT = 0;
     this.event = null;
     this.stats = { loot: 0, deaths: 0, nights: 0, best: null };
@@ -146,11 +147,13 @@ export class Game {
       case 'sel': if (this.isHost) this._hostSelect(from, m.i); return;
       case 'boeller': if (this.isHost) this._hostBoeller(m.p, m.v, m.k === 'polen' ? 'polen' : 'boeller'); return;
       case 'buy': if (this.isHost) this._hostBuy(m.k); return;
+      case 'adren': if (this.isHost) this._hostAdren(from); return;
+      case 'horn': if (this.isHost) this._hostHorn(from); return;
       case 'leave': if (this.isHost && this._allInVan()) this.endNight('leave'); return;
       case 'resync': {
         if (!this.isHost || this.phase !== 'play') return;
         const items = [...this.items.values()].filter((it) => !it.def.tool).map((it) => [it.id, it.type, it.value, it.body.position.x, it.body.position.y, it.body.position.z]);
-        this.net.send(from, { t: 'night', n: this.night, quota: this.quota, event: this.event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, nightLen: this.nightLen, stats: this.stats });
+        this.net.send(from, { t: 'night', n: this.night, quota: this.quota, event: this.event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, nightLen: this.nightLen, stats: this.stats });
         return;
       }
 
@@ -182,6 +185,12 @@ export class Game {
           this.audio.tone(140, 60, 1.0, 0.3, 'sawtooth', 0.05, _v.clone());
         } else if (m.k === 'snag' && m.id === this.myId) {
           this.ui.toast('Losgelassen – hängen geblieben!', '#ff8a4a', 1.4);
+        } else if (m.k === 'adren' && m.id === this.myId) {
+          this._startAdren();
+        } else if (m.k === 'horn') {
+          this.audio.horn(_v.clone());
+          if (m.id === this.myId) this.ui.toast('📯 HUUUP! Alle Monster kommen zum Van – jetzt woanders looten!', '#ffb547', 3);
+          else this.ui.toast('📯 Jemand hupt am Van – die Monster laufen hin!', '#ffb547', 2.5);
         } else if (m.k === 'full' && m.id === this.myId) {
           this.audio.denied(); this.ui.toast('Inventar voll (3/3)', '#ff5a4a', 1.4);
         }
@@ -228,7 +237,7 @@ export class Game {
     }
     const g = m.g;
     if (g[5] && g[5] !== this.night && performance.now() - (this._resyncAt || 0) > 2000) { this._resyncAt = performance.now(); this.net.toHost({ t: 'resync' }); }
-    this.timeLeft = g[0]; this.banked = g[1]; this.quota = g[2]; this.money = g[3]; this.boellers = g[4]; this.polen = g[6] || 0;
+    this.timeLeft = g[0]; this.banked = g[1]; this.quota = g[2]; this.money = g[3]; this.boellers = g[4]; this.polen = g[6] || 0; this.adren = g[7] || 0;
   }
 
   _sendSnapshot() {
@@ -247,14 +256,14 @@ export class Game {
       p: this.roster.map((r) => [r.id, r2(r.pos.x), r2(r.pos.y), r2(r.pos.z), r2(r.yaw), r2(r.pitch), r.crouch ? 1 : 0, r.flash ? 1 : 0, r.alive ? 1 : 0, r.inv, r.sel]),
       m: [...this.monsters.values()].map((mo) => mo.ai.snapshot()),
       i: items,
-      g: [Math.round(this.timeLeft), this.banked, this.quota, this.money, this.boellers, this.night, this.polen],
+      g: [Math.round(this.timeLeft), this.banked, this.quota, this.money, this.boellers, this.night, this.polen, this.adren],
     });
   }
 
   // ======================= Nacht-Ablauf =======================
   startNight(n, fresh = false) {
     if (fresh) {
-      this.money = 0; this.upg = UPG_DEFAULT(); this.boellers = 2; this.polen = 0;
+      this.money = 0; this.upg = UPG_DEFAULT(); this.boellers = 2; this.polen = 0; this.adren = 0;
       this.stats = { loot: 0, deaths: 0, nights: 0, best: null };
     }
     const rnd = mulberry32(this.seed + n * 977 + Math.floor(Math.random() * 1e6));
@@ -285,7 +294,7 @@ export class Game {
     if (n >= 6) plan.push('crawler');
     if (n >= 7) plan.push('stalker');
     if (event === 'bloodmoon') plan.push('stalker');
-    this.emit({ t: 'night', n, quota, event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, nightLen, stats: this.stats });
+    this.emit({ t: 'night', n, quota, event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, nightLen, stats: this.stats });
     // Monster (nur Host-KI)
     const ms = this.world.monsterSpawns.slice();
     plan.forEach((type, i) => {
@@ -308,9 +317,10 @@ export class Game {
     this._clearNight();
     this.nightLen = m.nightLen || NIGHT_LEN;
     this.night = m.n; this.quota = m.quota; this.event = m.event; this.banked = 0; this.timeLeft = this.nightLen;
-    this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0;
+    this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0; this.adren = m.adren || 0;
     if (m.stats) this.stats = { ...m.stats };
     this.quotaAnnounced = false; this._deadT = 0; this.scanCd = 0;
+    this.xrayT = 0; this.xrayCd = 0; this.adrenT = 0; this.hornCd = 0;
     for (const it of m.items) this._createItem(...it);
     this.world.setEvent(m.event);
     const idx = this.roster.findIndex((r) => r.isLocal);
@@ -379,7 +389,7 @@ export class Game {
     this.emit({ t: 'end', res });
     setTimeout(() => {
       if (this.disposed) return;
-      if (success) this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen });
+      if (success) this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren });
       else this.emit({ t: 'over', stats: this.stats, night: this.night });
     }, 5500);
   }
@@ -416,10 +426,10 @@ export class Game {
   _onShop(m) {
     const paid = this.phase === 'shop' && m.money < this.money;
     this.phase = 'shop';
-    this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0;
+    this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0; this.adren = m.adren || 0;
     this.ui.modal('endcard', false);
     this.ui.modal('shop', true);
-    this.ui.shop(this.money, this.upg, { boellers: this.boellers, polen: this.polen }, this.night, this.isHost, (k) => this.buy(k));
+    this.ui.shop(this.money, this.upg, { boellers: this.boellers, polen: this.polen, adren: this.adren }, this.night, this.isHost, (k) => this.buy(k));
     $('shopSms').innerHTML = `📱 <b>Mr. Crane:</b> ${craneMessage(this.night)}`;
     if (paid) this.audio.cash();
     this.audio.startShopMusic();
@@ -437,7 +447,7 @@ export class Game {
     const it = shopItem(k);
     this.money -= c.price;
     if (it.consumable) this[it.store] += it.add; else this.upg[k] = c.lvl + 1;
-    this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, bought: k });
+    this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, bought: k });
   }
 
   nextNight() { if (this.isHost && this.phase === 'shop') this.startNight(this.night + 1); }
@@ -746,9 +756,18 @@ export class Game {
     }
     if (!p.alive || this.phase !== 'play') { this.ui.set('prompt', 'html', ''); this.ui.set('crosshair', 'class:active', false); p.carryMass = 0; return; }
     if (this.scanCd > 0) this.scanCd -= dt;
+    if (this.xrayCd > 0) this.xrayCd -= dt;
+    if (this.hornCd > 0) this.hornCd -= dt;
     if (inp.hit('KeyQ') && this.scanCd <= 0) this._scan();
     if (inp.hit('KeyB')) this._throwBoeller('boeller');
     if (inp.hit('KeyV')) this._throwBoeller('polen');
+    if (inp.hit('KeyX')) this._useXray();
+    if (inp.hit('KeyT')) this._useAdren();
+    if (inp.hit('KeyJ')) this._useHorn();
+    if (inp.hit('KeyR') && this.world.inVanZone(p.pos.x, p.pos.z, 3)) {
+      const name = this.audio.nextPartyStation();
+      this.ui.toast(`📻 Van-Radio: <b>${name}</b>`, '#ff6ad5', 1.6);
+    }
     const me = this.players.get(this.myId);
 
     // Slot-Wahl wie in Minecraft: 1/2/3 oder Mausrad
@@ -865,6 +884,61 @@ export class Game {
     this.ui.toast(polen ? '💥 POLENBÖLLER! In Deckung!' : '🧨 Böller geworfen!', polen ? '#ff5a4a' : '#ffb547', 1.4);
   }
 
+  // ---------- Gadgets ----------
+  /** Geisterblick-Brille (X): alle Monster kurz durch Wände sehen. */
+  _useXray() {
+    const lvl = level(this.upg, 'xray');
+    if (!lvl) { this.audio.denied(); this.ui.toast('👁️ Keine Geisterblick-Brille – gibt es im Shop', '#888', 1.6); return; }
+    if (this.xrayCd > 0) { this.audio.denied(); this.ui.toast(`👁️ Brille lädt noch ${Math.ceil(this.xrayCd)} s`, '#888', 1.2); return; }
+    this.xrayT = XRAY.dur[lvl]; this.xrayCd = XRAY.cd[lvl];
+    this._setXray(true);
+    this.audio.xray();
+    const entries = [];
+    for (const mo of this.monsters.values()) {
+      const v = mo.view;
+      entries.push({ pos: v.pos.clone(), obj: v.root, yOff: v.headHeight + 0.5, cls: 'monster', gone: () => this.xrayT <= 0,
+        html: `☠ ${MONSTER_INFO[v.type].name} <b>${Math.round(v.pos.distanceTo(this.local.pos))} m</b>` });
+    }
+    this.ui.scan(entries, this.xrayT, true);
+    this.ui.toast(entries.length ? `👁️ Geisterblick: ${entries.length} Monster sichtbar` : '👁️ Geisterblick: keine Monster in der Nacht', '#ff4040', 2);
+  }
+  _setXray(on) { for (const mo of this.monsters.values()) mo.view.setXray(on); }
+
+  /** Adrenalin-Spritze (T) – Verbrauchsgut, der Host zählt herunter. */
+  _useAdren() {
+    if (this.adren <= 0) { this.audio.denied(); this.ui.toast('💉 Keine Adrenalin-Spritze – ab Tag 2 im Shop', '#888', 1.4); return; }
+    if (this.adrenT > 0) return;
+    if (this.isHost) this._hostAdren(this.myId); else this.net.toHost({ t: 'adren' });
+  }
+  _hostAdren(pid) {
+    const r = this.players.get(pid);
+    if (this.adren <= 0 || !r || !r.alive || this.phase !== 'play') return;
+    this.adren--;
+    this.emit({ t: 'ev', k: 'adren', id: pid });
+  }
+  _startAdren() {
+    this.adrenT = 8;
+    this.audio.adrenaline();
+    this.engine.fx.hurt = 0.4;
+    this.ui.toast('💉 ADRENALIN! 8 Sekunden rennen ohne Pause', '#ff4060', 2);
+  }
+
+  /** Van-Hupe (J): lockt alle Monster zum Van (in die Safe-Zone kommen sie nicht). */
+  _useHorn() {
+    const p = this.local;
+    if (!this.world.inVanZone(p.pos.x, p.pos.z, 3)) return;
+    if (this.hornCd > 0) { this.audio.denied(); this.ui.toast(`📯 Hupe erst wieder in ${Math.ceil(this.hornCd)} s`, '#888', 1.2); return; }
+    this.hornCd = 20;
+    if (this.isHost) this._hostHorn(this.myId); else this.net.toHost({ t: 'horn' });
+  }
+  _hostHorn(pid) {
+    if (this.phase !== 'play' || (this._hornHostT || 0) > performance.now()) return;
+    this._hornHostT = performance.now() + 15000;
+    const vz = this.world.vanZone;
+    this._boomAt = { x: vz.x, z: vz.z, t: 6, r: 140 }; // lockt wie ein großer Knall, 6 s lang
+    this.emit({ t: 'ev', k: 'horn', id: pid, x: vz.x, y: vz.y + 1.2, z: vz.z });
+  }
+
   _scan() {
     const lvl = level(this.upg, 'scanner');
     if (!lvl) { this.audio.denied(); this.ui.toast('📡 Kein Item-Scanner – erst im Shop kaufen', '#888', 1.6); return; }
@@ -907,7 +981,9 @@ export class Game {
     const me = this.players.get(this.myId);
     // Lokaler Spieler
     if (playing && this.local.alive && !this.scare) {
-      this.local.update(dt, { flicker: this.scares.flicker > 0 || this._nearStalker, speedMul: 1 });
+      const adr = this.adrenT > 0;
+      if (adr) { this.adrenT -= dt; this.local.stamina = this.local.maxStamina; }
+      this.local.update(dt, { flicker: this.scares.flicker > 0 || this._nearStalker, speedMul: adr ? 1.3 : 1 });
       if (this.local.landHurt) { this.engine.fx.hurt = 0.7; this.local.landHurt = 0; }
     } else this.local.update(0, {});
     if (me) {
@@ -1006,6 +1082,8 @@ export class Game {
     this._radar(dt, playing);
     this._localSafe = this.local.alive && this.phase === 'play' && this.world.inSafeZone(this.local.pos.x, this.local.pos.z) && this.local.pos.y > this.world.height(this.local.pos.x, this.local.pos.z) + 0.3;
     this.audio.setPartyInside(this._localSafe);
+    if (this._localSafe && playing) this.local.stamina = Math.min(this.local.maxStamina, this.local.stamina + 40 * dt); // Energy-Drinks aus der Kühlbox
+    if (this.xrayT > 0 && (this.xrayT -= dt) <= 0) this._setXray(false);
     const hidden = this.local.alive && this.phase === 'play' && this.world.inHideout(this.local.pos.x, this.local.pos.y, this.local.pos.z);
     if (hidden !== this._localHidden) {
       this._localHidden = hidden;
@@ -1058,6 +1136,10 @@ export class Game {
     ui.set('hudMoney', 'text', String(this.money));
     ui.set('hudBoeller', 'text', String(this.boellers));
     ui.set('hudPolen', 'text', String(this.polen));
+    ui.set('hudAdren', 'text', String(this.adren));
+    const xl = level(this.upg, 'xray');
+    ui.set('hudXray', 'text', !xl ? '' : this.xrayT > 0 ? `👁️ Geisterblick ${Math.ceil(this.xrayT)}s` : this.xrayCd > 0 ? `👁️ Brille ${Math.ceil(this.xrayCd)}s` : 'X  Geisterblick bereit');
+    ui.set('hudXray', 'class:cd', !!xl && this.xrayT <= 0 && this.xrayCd > 0);
     const hasScan = owns(this.upg, 'scanner');
     ui.set('hudScan', 'text', !hasScan ? '🔒 Scanner (Shop)' : this.scanCd > 0 ? `Scanner ${Math.ceil(this.scanCd)}s` : 'Q  Scanner bereit');
     ui.set('hudScan', 'class:cd', !hasScan || this.scanCd > 0);

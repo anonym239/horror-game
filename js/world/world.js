@@ -520,15 +520,22 @@ export class World {
     under.position.copy(W(0, 0.06, -0.4)); under.rotation.y = v.rot;
     const light = new THREE.PointLight(0xff00ff, 0, 9, 2);
     light.position.copy(W(0.3, 1.1, -0.6)); // im Laderaum, scheint durch die offene Tür nach draußen
-    this.group.add(bulbs, under, light);
-    this.party = { on: false, bulbs, under, light, n: pts.length, col: new THREE.Color() };
+    // Discokugel unter der Laderaum-Decke
+    const disco = new THREE.Group();
+    disco.position.copy(W(0, 1.95, -0.7));
+    const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 1), new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 1, roughness: 0.15, flatShading: true, emissive: 0xff00ff, emissiveIntensity: 0.6 }));
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.3, 4), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+    cord.position.y = 0.3;
+    disco.add(ball, cord);
+    this.group.add(bulbs, under, light, disco);
+    this.party = { on: false, bulbs, under, light, disco, ball, n: pts.length, col: new THREE.Color() };
     this.setParty(false);
   }
 
   setParty(on) {
     const P = this.party; if (!P) return;
     P.on = on;
-    P.bulbs.visible = on; P.under.visible = on;
+    P.bulbs.visible = on; P.under.visible = on; P.disco.visible = on;
     if (!on) P.light.intensity = 0;
   }
 
@@ -548,6 +555,8 @@ export class World {
     P.light.intensity = 0.6 + 0.6 * Math.max(0, Math.sin(t * Math.PI * 4));
     P.under.material.color.setHSL((hue + 0.5) % 1, 1, 0.5);
     P.under.material.opacity = 0.35 + 0.15 * Math.sin(t * 6);
+    P.disco.rotation.y = t * 1.6;
+    P.ball.material.emissive.setHSL((hue + 0.33) % 1, 1, 0.5);
   }
 
   _fireflies(rnd) {
