@@ -12,14 +12,19 @@ export class Input {
     this.enabled = true;
     this.sensitivity = 1;
     this.onLockChange = null;
+    this.translate = (c) => c;   // eigene Tastenbelegung (siehe keybinds.js)
+    this.capture = null;         // beim Umbelegen: nächste Taste abfangen
 
     addEventListener('keydown', (e) => {
-      if (e.target && (e.target.tagName === 'INPUT')) return;
+      if (this.capture) { e.preventDefault(); e.stopImmediatePropagation(); const cb = this.capture; this.capture = null; cb(e.code); return; }
+      if (e.target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName))) return;
       if (['Tab', 'Space', 'ControlLeft'].includes(e.code)) e.preventDefault();
-      if (!this.keys.has(e.code)) this.pressed.add(e.code);
-      this.keys.add(e.code);
-    });
-    addEventListener('keyup', (e) => this.keys.delete(e.code));
+      const code = this.translate(e.code);
+      if (!code) return;
+      if (!this.keys.has(code)) this.pressed.add(code);
+      this.keys.add(code);
+    }, true);
+    addEventListener('keyup', (e) => { const code = this.translate(e.code); if (code) this.keys.delete(code); });
     addEventListener('blur', () => { this.keys.clear(); this.buttons.clear(); });
     addEventListener('mousemove', (e) => {
       if (!this.locked) return;
@@ -38,6 +43,8 @@ export class Input {
       this.onLockChange && this.onLockChange(this.locked);
     });
   }
+  /** translate: Funktion physischer Code → Standard-Code (keybinds.buildMap) */
+  setBinds(translate) { this.translate = translate; this.keys.clear(); this.pressed.clear(); }
   lock() {
     const plain = () => { try { const q = this.canvas.requestPointerLock(); if (q && q.catch) q.catch(() => {}); } catch (e) { /* nicht erlaubt */ } };
     try {

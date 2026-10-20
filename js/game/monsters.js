@@ -396,7 +396,8 @@ export class MonsterAI {
     // Safe-Zone um den Van: Monster kommen nicht ran
     const vz = w.vanZone;
     const vd = Math.hypot(this.pos.x - vz.x, this.pos.z - vz.z);
-    if (vd < 11) { const k = 11 / vd; this.pos.x = vz.x + (this.pos.x - vz.x) * k; this.pos.z = vz.z + (this.pos.z - vz.z) * k; }
+    const keep = 11 * (vz.k || 1); // größerer Van im Editor = größere Schutzzone
+    if (vd < keep) { const k = keep / vd; this.pos.x = vz.x + (this.pos.x - vz.x) * k; this.pos.z = vz.z + (this.pos.z - vz.z) * k; }
     const r = Math.hypot(this.pos.x, this.pos.z);
     if (r > 112) { this.pos.x *= 112 / r; this.pos.z *= 112 / r; }
     w.collision.resolve(this.pos, this.radius, 2.4);

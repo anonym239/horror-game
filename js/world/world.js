@@ -7,6 +7,7 @@ import { mat, addWind, getQ } from '../engine/renderer.js';
 import { makeTextures, signTexture } from './textures.js';
 import { Builder } from './builder.js';
 import * as S from './structures.js';
+import { OBJECTS } from '../game/scenario.js';
 
 const SIZE = 300, HALF = SIZE / 2;
 export const PLAY_RADIUS = 108;
@@ -19,9 +20,17 @@ function distToSeg(px, pz, ax, az, bx, bz) {
 }
 
 export class World {
-  constructor(engine, seed = 1337) {
+  /** scn: Szenario aus dem Editor (null = Standard-Camp). */
+  constructor(engine, seed = 1337, scn = null) {
     this.engine = engine;
+    this.scn = scn;
+    if (scn) seed = scn.seed;
     this.seed = seed;
+    this.rules = scn ? scn.rules : null;
+    const vs = scn ? scn.van : null;
+    this.vanOpts = { k: vs ? vs.k : 1, cooler: vs ? vs.cooler : true, bench: vs ? vs.bench : true };
+    this.vanStyle = { disco: vs ? vs.disco : true, lights: vs ? vs.lights : true, station: vs ? vs.station : 0, color: vs ? vs.color : '#ffffff' };
+    this.fogMul = scn ? scn.rules.fog : 1;
     this.size = SIZE;
     this.q = getQ();
     this.group = new THREE.Group();
@@ -46,6 +55,7 @@ export class World {
 
   // ---------------- Layout ----------------
   _layout(rnd) {
+    if (this.scn) { this._layoutCustom(); return; }
     const j = (s) => (rnd() - 0.5) * s;
     this.clearing = { x: j(4), z: j(4) };
     this.cabins = [];
@@ -85,6 +95,43 @@ export class World {
     ];
     for (const z of this.zones) z.h = this._base(z.x, z.z);
     this.waterY = this._base(this.lake.x, this.lake.z) - 0.4;
+  }
+
+  /** Layout aus einem Editor-Szenario. */
+  _layoutCustom() {
+    const m = this.scn, of = (t) => m.objects.filter((o) => o.t === t).map((o) => ({ x: o.x, z: o.z, rot: o.r }));
+    const far = { x: 0, z: 400, rot: 0 };
+    const fire = of('campfire')[0];
+    this.clearing = fire ? { x: fire.x, z: fire.z } : { x: 0, z: 0 };
+    this.cabins = of('cabin'); this.lodges = of('lodge'); this.sheds = of('shed');
+    this.lodge = this.lodges[0] || far; this.chapel = of('chapel')[0] || far;
+    this.lake = m.lake ? { ...m.lake } : { x: 0, z: 600, r: 1 };
+    const v = m.van;
+    this.van = { x: v.x, z: v.z, rot: v.r };
+    const back = [v.x - Math.sin(v.r) * 70 * v.k, v.z - Math.cos(v.r) * 70 * v.k];
+    this.trail = [back, [v.x, v.z], [this.clearing.x, this.clearing.z]];
+    this.paths = [];
+    this.zones = m.objects.filter((o) => OBJECTS[o.t].zone).map((o) => ({ x: o.x, z: o.z, r0: OBJECTS[o.t].zone[0], r1: OBJECTS[o.t].zone[1] }));
+    this.zones.push({ x: v.x + Math.cos(v.r) * 2 * v.k, z: v.z - Math.sin(v.r) * 2 * v.k, r0: 8 * v.k, r1: 13 * v.k });
+    for (const z of this.zones) z.h = this._base(z.x, z.z);
+    this.waterY = this._base(this.lake.x, this.lake.z) - 0.4;
+  }
+
+  /** Punkt im Van-Rahmen (lokal -> Welt), beachtet Drehung und Größe. */
+  vanLocal(lx, ly, lz, out = new THREE.Vector3()) {
+    const v = this.van, k = this.vanOpts.k, c = Math.cos(v.rot), s = Math.sin(v.rot);
+    lx *= k; lz *= k;
+    return out.set(v.x + lx * c + lz * s, this.height(v.x, v.z) + ly * k, v.z - lx * s + lz * c);
+  }
+
+  /** Welt komplett aus der Szene entfernen und GPU-Speicher freigeben (beim Wechsel des Szenarios). */
+  dispose() {
+    this.engine.scene.remove(this.group);
+    this.group.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+      for (const mt of ms) { for (const k in mt) if (mt[k] && mt[k].isTexture) mt[k].dispose(); mt.dispose(); }
+    });
   }
 
   _base(x, z) {
@@ -139,6 +186,7 @@ export class World {
       rug: mat(0x5a2420, { roughness: 1 }),
       dirt: mat(0x2e251c, { roughness: 1 }),
       white: mat(0xffffff, { map: T.dirtyWhite, roughness: 0.6 }),
+      vanPaint: mat(new THREE.Color(this.vanStyle.color).getHex(), { map: T.dirtyWhite, roughness: 0.5 }),
       metal: mat(0x9a9890, { map: T.rust, roughness: 0.7, metalness: 0.4 }),
       rust: mat(0xb0a090, { map: T.rust, roughness: 0.8, metalness: 0.3 }),
       glass: mat(0x0b1218, { roughness: 0.08, metalness: 0.6 }),
@@ -196,13 +244,14 @@ export class World {
   _structures(rnd) {
     const b = new Builder(this.collision);
     const H = (x, z) => this.height(x, z);
+    if (this.scn) { this._structuresCustom(b, rnd, H); this._finishStructures(b); return; }
     this.cabins.forEach((c) => S.cabin(b, c.x, c.z, c.rot, H(c.x, c.z), rnd));
     S.cabin(b, this.lodge.x, this.lodge.z, this.lodge.rot, H(this.lodge.x, this.lodge.z), rnd, { W: 11, D: 7, lodge: true });
     S.chapel(b, this.chapel.x, this.chapel.z, this.chapel.rot, H(this.chapel.x, this.chapel.z), rnd);
     S.graveyard(b, this.graves.x, this.graves.z, this.graves.rot, H, rnd);
     S.watchtower(b, this.tower.x, this.tower.z, H(this.tower.x, this.tower.z), rnd);
     this.outhouses.forEach((o) => S.outhouse(b, o.x, o.z, Math.atan2(this.clearing.x - o.x, this.clearing.z - o.z), H(o.x, o.z)));
-    this.vanZone = S.van(b, this.van.x, this.van.z, this.van.rot, H(this.van.x, this.van.z));
+    this.vanZone = S.van(b, this.van.x, this.van.z, this.van.rot, H(this.van.x, this.van.z), this.vanOpts);
     S.carWreck(b, this.wreck.x, this.wreck.z, this.wreck.rot, H(this.wreck.x, this.wreck.z) - 0.1);
     S.campfire(b, this.clearing.x, this.clearing.z, H(this.clearing.x, this.clearing.z));
     for (let i = 0; i < 3; i++) {
@@ -227,9 +276,7 @@ export class World {
     b.box('woodDark', 0, 0.25, 4, 1.6, 0.12, 9, { tex: 1.2 });
     for (let i = 0; i < 4; i++) for (const s of [-1, 1]) b.box('woodDark', s * 0.7, -1.5, 0.5 + i * 2.6, 0.14, 1.85, 0.14, { collide: false });
     b.loot(0, 0.6, 7.5, 'outside');
-    this.lootSpots = b.lootSpots;
-    this.structures = b.build(this.M, this.q.shadows);
-    this.group.add(this.structures);
+    this._finishStructures(b);
     // Eingangsschild mit Text
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.2), new THREE.MeshLambertMaterial({ map: signTexture([{ text: 'CAMP HOLLOW PINES', size: 52 }, { text: 'seit 1987 geschlossen', size: 30 }]) }));
     const sx = -4.5, sz = -108;
@@ -240,6 +287,41 @@ export class World {
     sb.setFrame(sx, H(sx, sz), sz, 0.15);
     for (const s of [-1, 1]) sb.box('woodDark', s * 1.5, -0.3, -0.05, 0.14, 3.2, 0.14);
     this.group.add(sb.build(this.M, false));
+  }
+
+  _finishStructures(b) {
+    this.lootSpots = b.lootSpots;
+    this.structures = b.build(this.M, this.q.shadows);
+    this.group.add(this.structures);
+  }
+
+  /** Alle Objekte eines Editor-Szenarios bauen. */
+  _structuresCustom(b, rnd, H) {
+    this.stickSpots = [];
+    for (const o of this.scn.objects) {
+      const h = H(o.x, o.z);
+      switch (o.t) {
+        case 'cabin': S.cabin(b, o.x, o.z, o.r, h, rnd); break;
+        case 'lodge': S.cabin(b, o.x, o.z, o.r, h, rnd, { W: 11, D: 7, lodge: true }); break;
+        case 'shed': S.shed(b, o.x, o.z, o.r, h, rnd); break;
+        case 'chapel': S.chapel(b, o.x, o.z, o.r, h, rnd); break;
+        case 'graves': S.graveyard(b, o.x, o.z, o.r, H, rnd); break;
+        case 'tower': S.watchtower(b, o.x, o.z, h, rnd); break;
+        case 'trailer': S.trailer(b, o.x, o.z, o.r, h); break;
+        case 'tent': S.tent(b, o.x, o.z, o.r, h); break;
+        case 'crates': S.crates(b, o.x, o.z, o.r, h, rnd); break;
+        case 'circle': S.stoneCircle(b, o.x, o.z, o.r, h, rnd); break;
+        case 'outhouse': S.outhouse(b, o.x, o.z, o.r, h); break;
+        case 'wreck': S.carWreck(b, o.x, o.z, o.r, h - 0.1); break;
+        case 'campfire': S.campfire(b, o.x, o.z, h); break;
+        case 'picnic': S.picnicTable(b, o.x, o.z, o.r, h); break;
+        case 'well': S.well(b, o.x, o.z, h); break;
+        case 'stick': S.stickFigure(b, o.x, h + 2.2, o.z, o.r, rnd); break;
+        case 'loot': b.setFrame(o.x, h, o.z, 0); b.loot(0, 0.5, 0, 'outside'); break;
+      }
+    }
+    const v = this.van;
+    this.vanZone = S.van(b, v.x, v.z, v.rot, H(v.x, v.z), this.vanOpts);
   }
 
   _clearOf(x, z, extra = 0) {
@@ -297,7 +379,8 @@ export class World {
     const mark = (x, z) => { const k = Math.floor(x / 4) * 1000 + Math.floor(z / 4); (occupied.get(k) || occupied.set(k, []).get(k)).push([x, z]); };
     // Kollidierbare Bäume im Spielbereich (immer gleich – unabhängig von der Grafikstufe)
     let tries = 0;
-    while (inner.length + deads.length < 720 && tries++ < 20000) {
+    const treeCount = Math.round(720 * (this.rules ? this.rules.trees : 1));
+    while (inner.length + deads.length < treeCount && tries++ < 20000) {
       const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * (PLAY_RADIUS + 6);
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       const dense = 0.55 + 0.45 * (this.noise.perlin(x * 0.03 + 9, z * 0.03) * 0.5 + 0.5);
@@ -483,8 +566,8 @@ export class World {
     this.group.add(this.fireLight);
     this.vanLight = new THREE.SpotLight(0xfff0c8, 30, 45, 0.5, 0.6, 1.4);
     const vy = this.height(this.van.x, this.van.z);
-    this.vanLight.position.set(this.van.x, vy + 1.0, this.van.z + 2.3);
-    this.vanLight.target.position.set(this.van.x, vy, this.van.z + 30);
+    this.vanLocal(0, 1.0, 2.3, this.vanLight.position);
+    this.vanLocal(0, 0, 30, this.vanLight.target.position);
     this.group.add(this.vanLight, this.vanLight.target);
     this._partyLights(vy);
     // Glut-Partikel
@@ -501,8 +584,8 @@ export class World {
   /** Party-Lights am Van: Lichterkette auf dem Dach, Unterboden-Neon und ein Farb-Punktlicht.
    *  Die Lichter existieren immer (konstante Lichtanzahl → keine Shader-Neukompilierung), sind aber nur im Spiel an. */
   _partyLights(vy) {
-    const v = this.van, c = Math.cos(v.rot), s = Math.sin(v.rot);
-    const W = (lx, ly, lz) => new THREE.Vector3(v.x + lx * c + lz * s, vy + ly, v.z - lx * s + lz * c);
+    const v = this.van, k = this.vanOpts.k;
+    const W = (lx, ly, lz) => this.vanLocal(lx, ly, lz);
     const pts = [];
     for (let i = 0; i <= 9; i++) { const lz = -2.35 + i * 0.38; pts.push(W(-1.08, 2.56, lz), W(1.08, 2.56, lz)); }
     for (let i = 1; i < 5; i++) { const lx = -1.08 + i * 0.432; pts.push(W(lx, 2.56, -2.4), W(lx, 2.56, 1.2)); }
@@ -517,12 +600,12 @@ export class World {
     // Unterboden-Neon: flache, leuchtende Fläche unter dem Van
     const glowGeo = new THREE.PlaneGeometry(2.6, 5.4); glowGeo.rotateX(-Math.PI / 2);
     const under = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
-    under.position.copy(W(0, 0.06, -0.4)); under.rotation.y = v.rot;
+    under.position.copy(W(0, 0.06, -0.4)); under.rotation.y = v.rot; under.scale.setScalar(k);
     const light = new THREE.PointLight(0xff00ff, 0, 9, 2);
     light.position.copy(W(0.3, 1.1, -0.6)); // im Laderaum, scheint durch die offene Tür nach draußen
     // Discokugel unter der Laderaum-Decke
     const disco = new THREE.Group();
-    disco.position.copy(W(0, 1.95, -0.7));
+    disco.position.copy(W(0, 1.95, -0.7)); disco.scale.setScalar(k);
     const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 1), new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 1, roughness: 0.15, flatShading: true, emissive: 0xff00ff, emissiveIntensity: 0.6 }));
     const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.3, 4), new THREE.MeshBasicMaterial({ color: 0x111111 }));
     cord.position.y = 0.3;
@@ -535,12 +618,14 @@ export class World {
   setParty(on) {
     const P = this.party; if (!P) return;
     P.on = on;
-    P.bulbs.visible = on; P.under.visible = on; P.disco.visible = on;
+    const st = this.vanStyle;
+    P.bulbs.visible = on && st.lights; P.under.visible = on && st.lights; P.disco.visible = on && st.disco;
     if (!on) P.light.intensity = 0;
   }
 
   _updateParty(t) {
     const P = this.party; if (!P || !P.on) return;
+    if (!this.vanStyle.lights) { P.light.intensity = 0; P.disco.rotation.y = t * 1.6; return; }
     const beat = Math.floor(t * 4);   // Wechsel 4× pro Sekunde
     for (let i = 0; i < P.n; i++) {
       const h = ((i * 0.13 + t * 0.35) % 1);
@@ -596,15 +681,22 @@ export class World {
       if (Math.hypot(x - this.van.x, z - this.van.z) < 55 || !this._clearOf(x, z, -2)) continue;
       this.monsterSpawns.push({ x, z });
     }
-    const vz = this.vanZone;
-    this.playerSpawns = [0, 1, 2, 3].map((i) => ({ x: vz.x - 1 + (i % 2) * 2, z: vz.z + 3.5 + Math.floor(i / 2) * 1.5 }));
+    // Eigene Spawn-Punkte aus dem Editor haben Vorrang
+    const custom = this.scn ? this.scn.objects.filter((o) => o.t === 'spawn').map((o) => ({ x: o.x, z: o.z })) : [];
+    if (custom.length) this.monsterSpawns = custom;
+    if (!this.monsterSpawns.length) this.monsterSpawns = [{ x: 0, z: 80 }];
+    // Spieler starten in der gelben Abgabezone neben dem Van (in Van-Richtung gedreht)
+    this.playerSpawns = [0, 1, 2, 3].map((i) => {
+      const k = this.vanOpts.k, p = this.vanLocal(3.4 + ((i % 2) - 0.5) * 1.2 / k, 0, -0.6 + (Math.floor(i / 2) - 0.5) * 1.4 / k);
+      return { x: p.x, z: p.z };
+    });
   }
 
   /** Im Laderaum des Vans (Safe-Zone: Monster sehen und hören dich dort nicht). */
   inSafeZone(x, z) {
     const v = this.van, c = Math.cos(v.rot), s = Math.sin(v.rot);
     const dx = x - v.x, dz = z - v.z;
-    const lx = dx * c - dz * s, lz = dx * s + dz * c;
+    const k = this.vanOpts.k, lx = (dx * c - dz * s) / k, lz = (dx * s + dz * c) / k;
     return Math.abs(lx) < 1.0 && lz > -2.3 && lz < 1.1;
   }
 
@@ -613,7 +705,8 @@ export class World {
   inHideout(x, y, z) {
     if (!this._hideouts) {
       const mk = (h, hw, hd) => ({ x: h.x, z: h.z, c: Math.cos(h.rot), s: Math.sin(h.rot), hw, hd, floor: this.height(h.x, h.z), r2: hw * hw + hd * hd });
-      this._hideouts = [...this.cabins.map((c) => mk(c, 2.8, 2.3)), mk(this.lodge, 5.3, 3.3)];
+      const lodges = this.lodges || [this.lodge];
+      this._hideouts = [...this.cabins.map((c) => mk(c, 2.8, 2.3)), ...lodges.map((l) => mk(l, 5.3, 3.3)), ...(this.sheds || []).map((h) => mk(h, 1.65, 1.35))];
     }
     for (const h of this._hideouts) {
       const dx = x - h.x, dz = z - h.z;
@@ -635,9 +728,9 @@ export class World {
     // Spezial-Nächte: Blutmond (rot) oder Nebel
     const fog = this.engine.scene.fog;
     const tint = this.skyMat.uniforms.uTint.value;
-    if (kind === 'bloodmoon') { fog.color.setHex(0x140405); fog.density = 0.034; tint.setRGB(0.25, 0.02, 0.02); this.hemi.color.setHex(0x6a2a2a); this.moon.color.setHex(0xff6050); }
-    else if (kind === 'fog') { fog.color.setHex(0x0e1114); fog.density = 0.075; tint.setRGB(0.02, 0.02, 0.02); this.hemi.color.setHex(0x3a4a6a); this.moon.color.setHex(0x9ab0d8); }
-    else { fog.color.copy(this.fogColor); fog.density = 0.038; tint.setRGB(0, 0, 0); this.hemi.color.setHex(0x3a4a6a); this.moon.color.setHex(0x9ab0d8); }
+    if (kind === 'bloodmoon') { fog.color.setHex(0x140405); fog.density = 0.034 * this.fogMul; tint.setRGB(0.25, 0.02, 0.02); this.hemi.color.setHex(0x6a2a2a); this.moon.color.setHex(0xff6050); }
+    else if (kind === 'fog') { fog.color.setHex(0x0e1114); fog.density = 0.075 * this.fogMul; tint.setRGB(0.02, 0.02, 0.02); this.hemi.color.setHex(0x3a4a6a); this.moon.color.setHex(0x9ab0d8); }
+    else { fog.color.copy(this.fogColor); fog.density = 0.038 * this.fogMul; tint.setRGB(0, 0, 0); this.hemi.color.setHex(0x3a4a6a); this.moon.color.setHex(0x9ab0d8); }
     this.engine.scene.background = fog.color;
     this.skyMat.uniforms.uHorizon.value.copy(fog.color);
   }

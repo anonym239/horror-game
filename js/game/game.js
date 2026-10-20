@@ -11,6 +11,8 @@ import { shopItem, UPG_DEFAULT, sanitizeUpg, checkBuy, level, owns, XRAY } from 
 import { Scares } from './scares.js';
 import { EasterEggs } from './eastereggs.js';
 import { craneMessage, tapeLore } from '../story.js';
+import { scenarioPlan } from './scenario.js';
+import { Saves } from './saves.js';
 
 export const NIGHT_LEN = 360;
 const SNAP_DT = 1 / 15, STATE_DT = 1 / 20;
@@ -24,6 +26,7 @@ export class Game {
     this.isHost = opts.mode !== 'client';
     this.myId = opts.myId;
     this.seed = opts.seed;
+    this.scn = opts.scenario || null;   // Editor-Szenario (null = Standard-Camp)
     this.players = new Map();
     this.items = new Map();
     this.monsters = new Map();
@@ -67,7 +70,8 @@ export class Game {
     this.eggs = new EasterEggs(this);
     this.tapesHeard = 0;
     this.input.onLockChange = (locked) => this._onLock(locked);
-    if (this.isHost) this.startNight(1, true);
+    this.audio._partyStation = this.world.vanStyle.station;
+    if (this.isHost) { if (opts.save) this._loadSave(opts.save); else this.startNight(1, true); }
   }
 
   get myHoldId() { const me = this.players && this.players.get(this.myId); return me ? me.inv[me.sel] || null : null; }
@@ -100,7 +104,7 @@ export class Game {
     const sp = this.world.playerSpawns[(this.roster.length - 1) % 4]; // startet direkt am Van
     r.pos.set(sp.x, this.world.height(sp.x, sp.z), sp.z); r.tPos.copy(r.pos);
     this.net.broadcast({ t: 'pjoin', id, name, color });
-    this.net.send(id, { t: 'start', seed: this.seed, players: this.roster.map((p) => ({ id: p.id, name: p.name, color: p.color, host: p.id === this.myId })), late: true });
+    this.net.send(id, { t: 'start', seed: this.seed, scenario: this.scn, players: this.roster.map((p) => ({ id: p.id, name: p.name, color: p.color, host: p.id === this.myId })), late: true });
     if (this.phase === 'play') this.handle({ t: 'resync' }, id);
     else if (this._phaseMsg) this.net.send(id, this._phaseMsg);
     this.ui.toast(`${esc(name)} ist beigetreten`, '#4ce07a', 2);
@@ -153,7 +157,7 @@ export class Game {
       case 'resync': {
         if (!this.isHost || this.phase !== 'play') return;
         const items = [...this.items.values()].filter((it) => !it.def.tool).map((it) => [it.id, it.type, it.value, it.body.position.x, it.body.position.y, it.body.position.z]);
-        this.net.send(from, { t: 'night', n: this.night, quota: this.quota, event: this.event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, nightLen: this.nightLen, stats: this.stats });
+        this.net.send(from, { t: 'night', n: this.night, quota: this.quota, event: this.event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, nightLen: this.nightLen, stats: this.stats, banked: this.banked, timeLeft: this.timeLeft });
         return;
       }
 
@@ -262,20 +266,21 @@ export class Game {
 
   // ======================= Nacht-Ablauf =======================
   startNight(n, fresh = false) {
+    const R = this.scn ? this.scn.rules : null;
     if (fresh) {
-      this.money = 0; this.upg = UPG_DEFAULT(); this.boellers = 2; this.polen = 0; this.adren = 0;
+      this.money = R ? R.startMoney : 0; this.upg = UPG_DEFAULT(); this.boellers = R ? R.startBoeller : 2; this.polen = 0; this.adren = 0;
       this.stats = { loot: 0, deaths: 0, nights: 0, best: null };
     }
     const rnd = mulberry32(this.seed + n * 977 + Math.floor(Math.random() * 1e6));
     const np = this.players.size;
-    const quota = Math.round(((200 + 190 * (n - 1) + 45 * (n - 1) ** 2) * (1 + 0.45 * (np - 1)) * (1 - 0.1 * level(this.upg, 'quota'))) / 10) * 10;
-    const nightLen = NIGHT_LEN + 45 * level(this.upg, 'overtime');
+    const quota = Math.round(((200 + 190 * (n - 1) + 45 * (n - 1) ** 2) * (1 + 0.45 * (np - 1)) * (1 - 0.1 * level(this.upg, 'quota')) * (R ? R.quotaMul : 1)) / 10) * 10;
+    const nightLen = (R ? R.nightLen : NIGHT_LEN) + 45 * level(this.upg, 'overtime');
     let event = null;
-    if (n >= 2 && rnd() < 0.3) event = rnd() < 0.5 ? 'bloodmoon' : 'fog';
+    if (n >= 2 && (!R || R.events) && rnd() < 0.3) event = rnd() < 0.5 ? 'bloodmoon' : 'fog';
     const spots = this.world.lootSpots.slice();
     for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
-    const count = Math.min(spots.length, 15 + 3 * n + 4 * (np - 1));
-    const valueMul = (1 + 0.1 * (n - 1)) * (event === 'bloodmoon' ? 1.5 : 1);
+    const count = Math.min(spots.length, Math.round((15 + 3 * n + 4 * (np - 1)) * (R ? R.lootCount : 1)));
+    const valueMul = (1 + 0.1 * (n - 1)) * (event === 'bloodmoon' ? 1.5 : 1) * (R ? R.lootMul : 1);
     const items = [];
     this.nextItemId = 1;
     // Altar bekommt immer etwas Besonderes
@@ -287,23 +292,86 @@ export class Game {
       const v = Math.round((d.val[0] + (d.val[1] - d.val[0]) * rnd()) * valueMul);
       items.push([this.nextItemId++, type, v, s.x, s.y + 0.25, s.z]);
     }
-    const plan = ['stalker'];
-    if (n >= 2) plan.push('doll');
-    if (n >= 3) plan.push('stalker');
-    if (n >= 4) plan.push('crawler');
-    if (n >= 6) plan.push('crawler');
-    if (n >= 7) plan.push('stalker');
-    if (event === 'bloodmoon') plan.push('stalker');
     this.emit({ t: 'night', n, quota, event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, nightLen, stats: this.stats });
-    // Monster (nur Host-KI)
-    const ms = this.world.monsterSpawns.slice();
+    this._spawnMonsters(n, event, rnd);
+    this.autosave();
+  }
+
+  /** Monster einer Nacht erzeugen (nur Host-KI). */
+  _spawnMonsters(n, event, rnd, delay = 25) {
+    let plan;
+    if (this.scn) plan = scenarioPlan(this.scn, n, event);
+    else {
+      plan = ['stalker'];
+      if (n >= 2) plan.push('doll');
+      if (n >= 3) plan.push('stalker');
+      if (n >= 4) plan.push('crawler');
+      if (n >= 6) plan.push('crawler');
+      if (n >= 7) plan.push('stalker');
+      if (event === 'bloodmoon') plan.push('stalker');
+    }
+    const ms = this.world.monsterSpawns;
+    const step = plan.length > 8 ? Math.max(4, 200 / plan.length) : delay; // viele Monster: schneller nacheinander
     plan.forEach((type, i) => {
       const sp = ms[Math.floor(rnd() * ms.length)];
-      const ai = new MonsterAI(type, sp.x, sp.z, this.world, n, rnd);
-      ai.activeIn += i * 25;
+      const ai = new MonsterAI(type, sp.x + (rnd() - 0.5) * 6, sp.z + (rnd() - 0.5) * 6, this.world, n, rnd);
+      ai.activeIn += i * step;
       const view = new MonsterView(type, this.engine.scene, this.audio);
       this.monsters.set(ai.id, { ai, view });
     });
+  }
+
+  // ======================= Speichern & Laden =======================
+  /** Spielstand als JSON (nur Host). null, wenn es gerade nichts zu speichern gibt (z. B. Game Over). */
+  serialize() {
+    if (!this.isHost) return null;
+    const won = this.phase === 'end' && this._lastEnd && this._lastEnd.success;
+    if (this.phase !== 'play' && this.phase !== 'shop' && !won) return null;
+    const d = {
+      v: 1, night: this.night, money: this.money, upg: { ...this.upg }, boellers: this.boellers, polen: this.polen, adren: this.adren,
+      stats: { ...this.stats }, seed: this.seed, scenario: this.scn, players: this.players.size,
+    };
+    if (this.phase === 'play') {
+      const items = [];
+      for (const it of this.items.values()) {
+        if (it.def.tool) continue;
+        const holder = it.heldBy && this.players.get(it.heldBy);
+        const p = holder ? holder.pos : it.body.position;
+        items.push([it.id, it.type, it.value, +p.x.toFixed(2), +(p.y + (holder ? 1 : 0.1)).toFixed(2), +p.z.toFixed(2)]);
+      }
+      const lp = this.local.pos;
+      d.play = { quota: this.quota, event: this.event, nightLen: this.nightLen, timeLeft: Math.max(5, Math.round(this.timeLeft)), banked: this.banked, items, pos: [+lp.x.toFixed(2), +lp.y.toFixed(2), +lp.z.toFixed(2)], yaw: +this.local.yaw.toFixed(2), alive: this.local.alive };
+    }
+    return d;
+  }
+
+  /** Autosave (Host/Solo). Leise – meldet sich nur bei Fehlern. */
+  autosave() {
+    const d = this.serialize();
+    if (!d) return false;
+    const ok = !!Saves.auto(d);
+    if (!ok && !this._saveWarned) { this._saveWarned = true; this.ui.toast('⚠ Autosave fehlgeschlagen (Speicher voll?)', '#ff5a4a', 3); }
+    return ok;
+  }
+
+  /** Spielstand laden (Host): entweder mitten in der Nacht oder im Shop. */
+  _loadSave(d) {
+    this.money = d.money | 0; this.upg = sanitizeUpg(d.upg); this.boellers = d.boellers | 0; this.polen = d.polen | 0; this.adren = d.adren | 0;
+    this.stats = { loot: 0, deaths: 0, nights: 0, best: null, ...d.stats };
+    this.night = Math.max(1, d.night | 0);
+    if (d.play) {
+      const P = d.play;
+      this.nextItemId = 1;
+      const items = (P.items || []).map((it, i) => [i + 1, it[1], it[2], it[3], it[4], it[5]]).filter((it) => LOOT[it[1]]);
+      this.emit({ t: 'night', n: this.night, quota: P.quota, event: P.event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, nightLen: P.nightLen, stats: this.stats, banked: P.banked, timeLeft: P.timeLeft });
+      if (P.pos && P.alive !== false) { this.local.pos.set(P.pos[0], P.pos[1] + 0.1, P.pos[2]); this.local.yaw = P.yaw || 0; }
+      const rnd = mulberry32(this.seed + this.night * 31 + Math.floor(Math.random() * 1e6));
+      this._spawnMonsters(this.night, P.event, rnd, 12);
+      this.ui.toast(`💾 Spielstand geladen – Nacht ${this.night}, noch ca. ${Math.max(1, Math.ceil(P.timeLeft / P.nightLen * 6))} Std. bis 4 Uhr`, '#6ad1ff', 3);
+    } else {
+      this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren });
+      this.ui.toast(`💾 Spielstand geladen – Shop nach Nacht ${this.night}`, '#6ad1ff', 3);
+    }
   }
 
   _clearNight() {
@@ -316,10 +384,10 @@ export class Game {
   _onNight(m) {
     this._clearNight();
     this.nightLen = m.nightLen || NIGHT_LEN;
-    this.night = m.n; this.quota = m.quota; this.event = m.event; this.banked = 0; this.timeLeft = this.nightLen;
+    this.night = m.n; this.quota = m.quota; this.event = m.event; this.banked = m.banked || 0; this.timeLeft = m.timeLeft || this.nightLen;
     this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0; this.adren = m.adren || 0;
     if (m.stats) this.stats = { ...m.stats };
-    this.quotaAnnounced = false; this._deadT = 0; this.scanCd = 0;
+    this.quotaAnnounced = this.banked >= this.quota; this._deadT = 0; this.scanCd = 0; this._autoT = 0;
     this.xrayT = 0; this.xrayCd = 0; this.adrenT = 0; this.hornCd = 0;
     for (const it of m.items) this._createItem(...it);
     this.world.setEvent(m.event);
@@ -395,6 +463,7 @@ export class Game {
   }
 
   _onEnd(res) {
+    this._lastEnd = res;
     const first = this.phase !== 'end'; // Host sendet Phasen-Nachrichten wiederholt → Sounds nur einmal
     this.phase = 'end';
     this.audio.stopAmbience(); this.audio.setDanger(0);
@@ -434,6 +503,7 @@ export class Game {
     if (paid) this.audio.cash();
     this.audio.startShopMusic();
     this.input.unlock();
+    if (this.isHost) this.autosave();
   }
 
   buy(k) {
@@ -999,6 +1069,7 @@ export class Game {
     // Host-Simulation
     if (this.isHost && playing) {
       this.timeLeft -= dt;
+      if ((this._autoT = (this._autoT || 0) + dt) > 45) { this._autoT = 0; this.autosave(); }
       this.physics.step(dt);
       for (const r of this.players.values()) {
         if (!r.isLocal) r.pos.lerp(r.tPos, 1 - Math.exp(-14 * dt));

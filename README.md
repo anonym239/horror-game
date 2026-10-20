@@ -19,6 +19,11 @@ Im Wald ist etwas, und es hört zu.
 - **Van-Upgrade**: Discokugel, Kühlbox mit Energy-Drinks (Ausdauer lädt im Laderaum schnell), Radio mit 4 Sendern und Hupe als Monster-Köder
 - **Geisterblick-Brille** (X): teures Premium-Gadget ab Tag 1, zeigt alle Monster rot durch Wände, 3 Stufen
 - **Adrenalin-Spritze** (T): 8 s unendlich Ausdauer und +30 % Tempo
+- **Spielstände**: Esc → 💾 Speichern (eigene Slots überschreiben/löschen/umbenennen), Hauptmenü → „Spiel laden“. Autosave zu jeder Nacht, alle 45 s und beim Verlassen/Schließen; „▶ Weiterspielen“ im Menü
+- **Grafik ändern ohne Spielverlust**: „Übernehmen & neu laden“ speichert vorher und setzt das Spiel nach dem Neuladen genau dort fort
+- **Eigene Tastenbelegung**: Steuerung → Taste anklicken → neue Taste drücken (doppelte Belegungen werden getauscht)
+- **Editor** (Hauptmenü → 🛠 Editor): eigene Karten mit Hütten, Lodges, Schuppen, Kapellen, Friedhöfen, Wohnwagen, Zelten, Kisten, Steinkreisen, See, Beute- und Monster-Spawn-Punkten; beliebig viele Monster (bis 40); Van in Farbe, Größe (bis 2,5×), Ausstattung und Radiosender; Regeln (Quote, Nachtlänge, Startgeld, Beute, Nebel, Bäume). Speichern, Export/Import als Datei, 4 Vorlagen, „▶ Testen“
+- **Eigene Karten im Mehrspieler**: in der Lobby wählt der Host Karte oder Spielstand – die Mitspieler bekommen die Karte automatisch
 - **Easter Eggs**: ein paar Geheimnisse sind versteckt …
 - **Polenböller** (V): 5× stärkere Explosion, verscheucht Monster im Umkreis
 - **Van als Safe-Zone**: Schiebetür offen, im Laderaum können Monster dich weder sehen noch hören – mit Party-Lights und Party-Musik

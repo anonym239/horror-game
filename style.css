@@ -266,3 +266,67 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin-right: 6p
 .player-list .kick { margin-left: auto; font-size: 12px; padding: 4px 9px; }
 .player-list.small li { font-size: 15px; padding: 6px 8px; }
 @media (max-width: 900px) { .br-grid { grid-template-columns: 1fr; } .br-row { grid-template-columns: minmax(0, 1fr) 60px 90px 96px; } }
+
+/* ================= Spielstände, Kartenauswahl, Tastenbelegung ================= */
+.name-row select { flex: 1; }
+.lobby-opts { display: flex; gap: 12px; flex-wrap: wrap; margin: 6px 0; }
+.lobby-opts label { flex: 1; min-width: 160px; }
+.saves-panel { width: min(760px, 94vw); max-height: 86vh; display: flex; flex-direction: column; }
+.saves-new { display: flex; gap: 8px; margin-bottom: 10px; }
+.saves-new input { flex: 1; }
+.saves-list { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 60px; }
+.save-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); background: rgba(255,255,255,.03); }
+.save-row.auto { border-color: rgba(106,209,255,.5); }
+.save-row .sr-main { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.save-row .sr-main small { color: var(--bone-dim); font-size: 12px; }
+.save-row .sr-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.keybinds > div { display: flex; align-items: center; gap: 8px; }
+.keybinds button.kb { min-width: 92px; font: 600 13px Inter, sans-serif; padding: 4px 8px; background: rgba(255,255,255,.06); color: var(--bone); border: 1px solid var(--line); cursor: pointer; }
+.keybinds button.kb:hover { border-color: var(--amber); }
+.keybinds button.kb.wait { border-color: #ffd040; color: #ffd040; animation: kbBlink .8s infinite; }
+.keybinds button.kb.changed { color: #6ad1ff; }
+@keyframes kbBlink { 50% { opacity: .5; } }
+
+/* ================= Editor ================= */
+.editor-screen { background: #070a0d; flex-direction: column; padding: 0; }
+.editor-screen.show { display: flex; }
+.ed-top { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.ed-name { font: 700 18px Inter, sans-serif; background: transparent; border: 1px solid transparent; color: var(--bone); padding: 4px 8px; min-width: 200px; }
+.ed-name:hover, .ed-name:focus { border-color: var(--line); }
+.ed-status { flex: 1; }
+.ed-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.ed-main { flex: 1; display: flex; min-height: 0; }
+.ed-side { width: 330px; overflow-y: auto; padding: 12px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; background: rgba(255,255,255,.02); }
+.ed-side label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.ed-side label.check { flex-direction: row; align-items: center; }
+.ed-side textarea { background: rgba(0,0,0,.3); color: var(--bone); border: 1px solid var(--line); font: 13px Inter, sans-serif; padding: 6px; resize: vertical; }
+.ed-canvas-wrap { flex: 1; position: relative; min-width: 0; }
+.ed-canvas-wrap canvas { position: absolute; inset: 0; display: block; touch-action: none; }
+.ed-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.ed-tabs button { font: 600 12px Inter, sans-serif; padding: 7px 2px; background: rgba(255,255,255,.04); color: var(--bone-dim); border: 1px solid var(--line); cursor: pointer; }
+.ed-tabs button.on { color: var(--bone); border-color: var(--amber); background: rgba(255,181,71,.1); }
+.ed-tab { display: flex; flex-direction: column; gap: 8px; }
+.ed-tab.hidden, #edLakeOpts.hidden { display: none; }
+.ed-h { font: 800 12px Inter, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--amber); margin-top: 6px; }
+.ed-h small { text-transform: none; letter-spacing: 0; color: var(--bone-dim); font-weight: 400; margin-left: 4px; }
+.ed-palette { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.ed-pal { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; font: 11px Inter, sans-serif; background: rgba(255,255,255,.04); color: var(--bone); border: 1px solid var(--line); cursor: pointer; }
+.ed-pal span { font-size: 20px; }
+.ed-pal:hover { border-color: var(--bone-dim); }
+.ed-pal.on { border-color: #ffd040; background: rgba(255,208,64,.12); }
+.ed-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.ed-sel { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.ed-selname small { color: var(--bone-dim); display: block; }
+.ed-rng b { color: var(--amber); font-weight: 600; }
+.ed-mon { display: grid; grid-template-columns: 1fr 64px; gap: 4px 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.ed-mon > div { grid-column: 1 / -1; display: flex; flex-direction: column; }
+.ed-mon small { color: var(--bone-dim); font-size: 11px; }
+.ed-num { width: 64px; }
+.ed-swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ed-swatch { width: 26px; height: 26px; border: 2px solid rgba(255,255,255,.3); cursor: pointer; }
+.ed-swatch:hover { border-color: #fff; }
+.ed-swatches input[type=color] { width: 34px; height: 28px; padding: 0; border: none; background: none; }
+.ed-info, .ed-stats { font-size: 12px; color: var(--bone-dim); line-height: 1.5; }
+.ed-stats { margin-top: auto; border-top: 1px solid var(--line); padding-top: 8px; }
+.ed-stats .warn { color: #ffb547; }
+@media (max-width: 760px) { .ed-main { flex-direction: column; } .ed-side { width: auto; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--line); } }

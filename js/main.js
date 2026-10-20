@@ -11,6 +11,10 @@ import { Lobby } from './game/lobby.js';
 import { Game } from './game/game.js';
 import { PLAYER_CSS } from './game/avatar.js';
 import { Story } from './story.js';
+import { Editor } from './editor/editor.js';
+import { Saves, describeSave, AUTO_ID } from './game/saves.js';
+import { Scenarios, sanitizeScenario, templates } from './game/scenario.js';
+import { ACTIONS, loadBinds, saveBinds, assign, buildMap, keyLabel, RESERVED } from './engine/keybinds.js';
 
 // Kurz an den Browser abgeben (Ladebalken zeichnen) – auch in Hintergrund-Tabs, wo rAF pausiert
 const frame = () => new Promise((r) => { let done = false; const go = () => { if (!done) { done = true; r(); } }; requestAnimationFrame(() => setTimeout(go, 0)); setTimeout(go, 60); });
@@ -34,6 +38,9 @@ class App {
     this.audio.setVolume(this.settings.volume);
     this.input = new Input(this.canvas);
     this.input.sensitivity = this.settings.sens;
+    this.binds = loadBinds();
+    this.input.setBinds(buildMap(this.binds));
+    this._worldKey = 'default';
     this.ui = new UI(this.engine);
     this.audio.onMic = (st) => { if (this.net) this.net.setStream(st); $('btnMicLobby').textContent = '🎤 Mikrofon aktiv'; };
     this.game = null; this.net = null;
@@ -62,8 +69,18 @@ class App {
     $('gpuInfo').textContent = 'Grafik: ' + PRESETS[this.qualityKey].name + (this.settings.quality === 'auto' ? ' (auto)' : '');
     $('loading').style.opacity = '0';
     setTimeout(() => { $('loading').classList.remove('show'); this.ui.screen('menu'); }, 600);
+    this.editor = new Editor(this);
     this._bindUI();
     this._renderStats();
+    this.refreshMapLists();
+    this._renderKeys();
+    // Nach "Übernehmen & neu laden" im Spiel: direkt dort weiterspielen
+    let resume = null;
+    try { resume = JSON.parse(sessionStorage.getItem('hp_resume') || 'null'); sessionStorage.removeItem('hp_resume'); } catch (e) { resume = null; }
+    if (resume && resume.data) setTimeout(() => { this.startSolo({ save: resume.data }); this.ui.toast('⚙ Einstellungen übernommen – du spielst genau dort weiter', '#6ad1ff', 3.5); }, 650);
+    // Beim Schließen/Verlassen automatisch speichern
+    addEventListener('beforeunload', () => { if (this.game) this.game.autosave(); });
+    addEventListener('pagehide', () => { if (this.game) this.game.autosave(); });
     // Raumliste schon im Hintergrund laden (Zähler am Mehrspieler-Button)
     if (!IN_ARTIFACT) {
       this.lobby.onChange = (list) => this._renderRooms(list);
@@ -116,10 +133,21 @@ class App {
     $('brMic').onchange = (e) => { s.mic = e.target.checked; save('hp_settings', s); if (s.mic) this._mic(); else this.audio.setMicMuted(true); };
 
     $('btnSettings').onclick = () => this.openSettings();
-    $('btnControls').onclick = () => this.ui.modal('controls', true);
+    $('btnControls').onclick = () => { this._renderKeys(); this.ui.modal('controls', true); };
+    $('btnEditor').onclick = () => { this.audio.init(); this.editor.open(); };
+    $('btnLoad').onclick = () => this.openSaves('load');
+    $('btnContinue').onclick = () => { const a = Saves.get(AUTO_ID); if (a) this._storyFirst(() => this.startSolo({ save: a.data })); };
+    $('mapSelect').onchange = (e) => { s.map = e.target.value; save('hp_settings', s); };
+    $('lobbyMap').onchange = () => { if (this.net && this.net.isHost) this._broadcastLobby(); };
+    $('lobbySave').onchange = () => { const sv = Saves.get($('lobbySave').value); if (sv) $('lobbyMap').value = ''; if (this.net && this.net.isHost) this._broadcastLobby(); };
+    $('btnPauseSave').onclick = () => this.openSaves('save');
+    $('btnSavesClose').onclick = () => { this.ui.modal('saves', false); if (this._savesFromPause) this._maybeResume(); };
+    $('btnSaveNew').onclick = () => this._saveTo(null, $('saveName').value.trim());
+    $('saveName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnSaveNew').click(); });
+    $('btnKeysReset').onclick = () => { this.binds = {}; for (const x of ACTIONS) this.binds[x.a] = x.def; this._applyBinds(); };
     $('btnCloseControls').onclick = () => { this.ui.modal('controls', false); this._maybeResume(); };
     $('btnCloseSettings').onclick = () => { this.ui.modal('settings', false); this._maybeResume(); };
-    $('btnApplyReload').onclick = () => { save('hp_settings', s); location.reload(); };
+    $('btnApplyReload').onclick = () => this._applyReload();
     $('optQuality').onchange = (e) => { s.quality = e.target.value; save('hp_settings', s); };
     $('optVolume').oninput = (e) => { s.volume = +e.target.value; this.audio.setVolume(s.volume); save('hp_settings', s); };
     $('optSens').oninput = (e) => { s.sens = +e.target.value; this.input.sensitivity = s.sens; save('hp_settings', s); };
@@ -136,7 +164,7 @@ class App {
     $('btnRetry').onclick = () => this.game && this.game.retry();
     $('btnResume').onclick = () => { this.ui.modal('pause', false); this.input.lock(); };
     $('btnPauseSettings').onclick = () => { this.ui.modal('pause', false); this.openSettings(); };
-    $('btnPauseControls').onclick = () => { this.ui.modal('pause', false); this.ui.modal('controls', true); };
+    $('btnPauseControls').onclick = () => { this.ui.modal('pause', false); this._renderKeys(); this.ui.modal('controls', true); };
     $('btnQuit').onclick = () => this.exitToMenu();
     $('btnMsgOk').onclick = () => this.ui.modal('message', false);
     this.canvas.addEventListener('click', () => {
@@ -144,6 +172,123 @@ class App {
       if (this.game && this.game.phase === 'play' && !this.input.locked && !document.querySelector('.modal.show')) this.input.lock();
     });
     $('clickToPlay').addEventListener('click', () => this.input.lock());
+  }
+
+  // ---------------- Grafik neu laden, ohne das Spiel zu verlieren ----------------
+  _applyReload() {
+    const s = this.settings;
+    save('hp_settings', s);
+    const g = this.game;
+    if (g && this.net) {
+      if (!confirm('Neu laden beendet die Mehrspieler-Runde für alle. ' + (g.isHost ? 'Dein Fortschritt wird gespeichert – du kannst ihn danach in der Lobby unter „Spielstand“ fortsetzen. ' : '') + 'Trotzdem neu laden?')) return;
+      if (g.isHost) g.autosave();
+    } else if (g) {
+      const d = g.serialize();
+      if (d) { try { sessionStorage.setItem('hp_resume', JSON.stringify({ data: d })); } catch (e) { /* ohne Fortsetzen */ } g.autosave(); }
+    }
+    location.reload();
+  }
+
+  // ---------------- Tastenbelegung ----------------
+  _renderKeys() {
+    const box = $('keyList');
+    box.innerHTML = '';
+    for (const x of ACTIONS) {
+      const row = document.createElement('div');
+      const b = document.createElement('button');
+      b.className = 'kb' + (this.binds[x.a] !== x.def ? ' changed' : '');
+      b.textContent = keyLabel(this.binds[x.a]);
+      b.onclick = () => {
+        box.querySelectorAll('.kb.wait').forEach((o) => o.classList.remove('wait'));
+        b.classList.add('wait'); b.textContent = 'Taste …';
+        this.input.capture = (code) => {
+          if (code !== 'Escape' && !RESERVED.has(code)) { assign(this.binds, x.a, code); this._applyBinds(); }
+          else this._renderKeys();
+        };
+      };
+      row.appendChild(b);
+      row.appendChild(document.createTextNode(' ' + x.name));
+      box.appendChild(row);
+    }
+  }
+  _applyBinds() { saveBinds(this.binds); this.input.setBinds(buildMap(this.binds)); this._renderKeys(); }
+
+  // ---------------- Karten (Szenarien) ----------------
+  /** id → Szenario (eigene oder Vorlage), '' = Standard */
+  getMap(id) { if (!id) return null; return Scenarios.get(id) || templates().find((t) => t.id === id) || null; }
+
+  refreshMapLists() {
+    const mine = Scenarios.list(), tpl = templates();
+    const opts = `<option value="">🌲 Standard-Camp</option>`
+      + (mine.length ? `<optgroup label="Deine Szenarien">${mine.map((m, i) => `<option value="${m.id}">Szenario ${i + 1}: ${esc(m.name)}</option>`).join('')}</optgroup>` : '')
+      + `<optgroup label="Vorlagen">${tpl.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}</optgroup>`;
+    for (const id of ['mapSelect', 'lobbyMap']) {
+      const el = $(id), cur = id === 'mapSelect' ? this.settings.map || '' : el.value;
+      el.innerHTML = opts;
+      el.value = this.getMap(cur) ? cur : '';
+    }
+    const saves = Saves.list();
+    $('lobbySave').innerHTML = `<option value="">Neues Spiel</option>` + saves.map((sv) => `<option value="${sv.id}">${esc(sv.name)} – Nacht ${sv.data.night}</option>`).join('');
+    const auto = Saves.get(AUTO_ID);
+    $('btnContinue').classList.toggle('hidden', !auto);
+    if (auto) $('btnContinue').textContent = `▶ Weiterspielen (Nacht ${auto.data.night} · ${auto.data.scenario ? auto.data.scenario.name : 'Standard-Camp'})`;
+  }
+
+  /** Welt für ein Szenario bauen (null = Standard). Baut nur neu, wenn sich die Karte ändert. */
+  setWorld(scn) {
+    const key = scn ? scn.id + ':' + scn.rev : 'default';
+    if (this._worldKey === key) return;
+    this.world.dispose();
+    this.world = new World(this.engine, 1337, scn);
+    this.engine.renderer.compile(this.engine.scene, this.engine.camera);
+    this._worldKey = key;
+  }
+
+  // ---------------- Spielstände ----------------
+  openSaves(mode) {
+    this._savesMode = mode;
+    const inGame = mode === 'save';
+    this._savesFromPause = inGame;
+    if (inGame) this.ui.modal('pause', false);
+    $('savesTitle').textContent = inGame ? '💾 Spiel speichern' : '💾 Spiel laden';
+    $('savesNew').classList.toggle('hidden', !inGame);
+    $('saveName').value = inGame && this.game ? `Nacht ${this.game.night} – ${new Date().toLocaleDateString('de-DE')}` : '';
+    $('savesHint').textContent = inGame && this.game && !this.game.isHost ? 'Nur der Host kann speichern.' : '';
+    this._renderSaves();
+    this.ui.modal('saves', true);
+  }
+
+  _renderSaves() {
+    const inGame = this._savesMode === 'save', canSave = inGame && this.game && this.game.isHost;
+    const list = Saves.list();
+    const box = $('savesList');
+    if (!list.length) { box.innerHTML = '<p class="hint">Noch keine Spielstände. Im Spiel: Esc → 💾 Speichern. Außerdem speichert das Spiel automatisch.</p>'; return; }
+    box.innerHTML = list.map((sv) => {
+      const auto = sv.id === AUTO_ID;
+      const btns = inGame
+        ? `${canSave && !auto ? `<button class="btn small primary" data-over="${sv.id}">Überschreiben</button>` : ''}<button class="btn small ghost" data-del="${sv.id}">Löschen</button>`
+        : `<button class="btn small primary" data-load="${sv.id}">Laden</button>${auto ? '' : `<button class="btn small" data-ren="${sv.id}">Umbenennen</button>`}<button class="btn small ghost" data-del="${sv.id}">Löschen</button>`;
+      return `<div class="save-row${auto ? ' auto' : ''}"><div class="sr-main"><b>${auto ? '🔄 ' : ''}${esc(sv.name)}</b><small>${esc(describeSave(sv.data))}</small><small>${new Date(sv.date).toLocaleString('de-DE')}</small></div><div class="sr-btns">${btns}</div></div>`;
+    }).join('');
+    box.onclick = (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.load) { const sv = Saves.get(b.dataset.load); this.ui.modal('saves', false); if (sv) this.startSolo({ save: sv.data }); }
+      else if (b.dataset.over) { if (confirm('Diesen Spielstand überschreiben?')) this._saveTo(b.dataset.over); }
+      else if (b.dataset.ren) { const n = prompt('Neuer Name:', Saves.get(b.dataset.ren).name); if (n) { Saves.rename(b.dataset.ren, n); this._renderSaves(); this.refreshMapLists(); } }
+      else if (b.dataset.del) { if (confirm('Spielstand wirklich löschen?')) { Saves.remove(b.dataset.del); this._renderSaves(); this.refreshMapLists(); } }
+    };
+  }
+
+  _saveTo(id, name) {
+    const g = this.game;
+    if (!g || !g.isHost) { this.ui.toast('Nur der Host kann speichern', '#888', 2); return; }
+    const d = g.serialize();
+    if (!d) { this.ui.toast('Gerade gibt es nichts zu speichern', '#888', 2); return; }
+    const e = Saves.put(d, { id: id || undefined, name: name || undefined });
+    if (!e) { this.ui.toast('Speichern fehlgeschlagen – Speicher voll oder zu viele Spielstände (max. 20)', '#ff5a4a', 3); return; }
+    this.audio.cash();
+    this.ui.toast(`💾 Gespeichert: ${esc(e.name)}`, '#4ce07a', 2);
+    this._renderSaves(); this.refreshMapLists();
   }
 
   _maybeResume() {
@@ -223,11 +368,16 @@ class App {
     if (Story.seen()) go(); else this.playStory('menu', go, true);
   }
 
-  async startSolo() {
+  /** opts: { save, scenario, fromEditor } */
+  async startSolo(opts = {}) {
     this.audio.init();
     if (this.settings.mic) this._mic(); // läuft im Hintergrund, blockiert den Start nicht
+    const save = opts.save || null;
+    const scn = save ? sanitizeScenario(save.scenario) : opts.scenario !== undefined ? opts.scenario : this.getMap(this.settings.map);
+    this._fromEditor = !!opts.fromEditor;
     this.ui.screen(null);
-    this.game = new Game(this, { mode: 'sp', myId: 'local', seed: Math.floor(Math.random() * 1e9), players: [{ id: 'local', name: this.name, color: 0 }] });
+    this.setWorld(scn);
+    this.game = new Game(this, { mode: 'sp', myId: 'local', seed: save ? save.seed : Math.floor(Math.random() * 1e9), players: [{ id: 'local', name: this.name, color: 0 }], scenario: scn, save });
   }
 
   async _setupNet() {
@@ -362,11 +512,15 @@ class App {
       if (m.room) this.room = m.room;
       const r = this.room || {};
       this.ui.lobby(m.players.map((p) => ({ ...p, css: PLAYER_CSS[p.color % 4] })), false, { name: r.name, max: r.max, priv: r.priv, myId: net.myId });
+      $('lobbyHostOpts').classList.add('hidden');
+      $('lobbyMapInfo').textContent = r.map ? `Karte: ${r.map}` : '';
       for (const p of m.players) if (p.id !== net.myId && net.myId < p.id) net.callPeer(p.id);
     } else if (m.t === 'start') {
       if (this.story.active) { this.story.onDone = null; this.story.finish(); }
       this.ui.screen(null);
-      this.game = new Game(this, { mode: 'client', myId: net.myId, seed: m.seed, players: m.players });
+      const scn = m.scenario ? sanitizeScenario(m.scenario) : null;
+      this.setWorld(scn);
+      this.game = new Game(this, { mode: 'client', myId: net.myId, seed: m.seed, players: m.players, scenario: scn });
       for (const p of m.players) if (p.id !== net.myId && net.myId < p.id) net.callPeer(p.id);
     } else if (m.t === 'full') {
       this.exitToMenu('browser'); this.ui.message('Raum voll', 'Dieser Raum ist schon voll.');
@@ -375,35 +529,52 @@ class App {
     }
   }
 
+  /** Host: gewählte Karte bzw. Karte des gewählten Spielstands */
+  _lobbyChoice() {
+    const sv = Saves.get($('lobbySave').value);
+    if (sv) return { save: sv.data, scn: sanitizeScenario(sv.data.scenario) };
+    return { save: null, scn: this.getMap($('lobbyMap').value) };
+  }
+
   _broadcastLobby() {
     const r = this.room || {};
+    const ch = this._lobbyChoice();
+    r.map = (ch.scn ? ch.scn.name : 'Standard-Camp') + (ch.save ? ` · Spielstand Nacht ${ch.save.night}` : '');
+    $('lobbyHostOpts').classList.remove('hidden');
+    $('lobbyMap').disabled = !!ch.save;
+    $('lobbyMapInfo').textContent = ch.save ? `Fortsetzen: ${describeSave(ch.save)}` : ch.scn ? (ch.scn.desc || '') : '';
     const list = this.lobbyPlayers.map((p) => ({ ...p, css: PLAYER_CSS[p.color % 4] }));
     this.ui.lobby(list, true, { name: r.name, max: r.max, priv: r.priv, myId: this.net.myId, onKick: (id, name) => this.kick(id, name) });
-    this.net.broadcast({ t: 'lobby', players: this.lobbyPlayers, room: { name: r.name, max: r.max, priv: r.priv } });
+    this.net.broadcast({ t: 'lobby', players: this.lobbyPlayers, room: { name: r.name, max: r.max, priv: r.priv, map: r.map } });
   }
 
   startHosted() {
     if (!this.net || !this.net.isHost) return;
     if (this.story.active) { this.story.onDone = null; this.story.finish(); }
-    const seed = Math.floor(Math.random() * 1e9);
-    this.net.broadcast({ t: 'start', seed, players: this.lobbyPlayers });
+    const { save: sv, scn } = this._lobbyChoice();
+    const seed = sv ? sv.seed : Math.floor(Math.random() * 1e9);
+    this.setWorld(scn);
+    this.net.broadcast({ t: 'start', seed, players: this.lobbyPlayers, scenario: scn });
     this.ui.screen(null);
-    this.game = new Game(this, { mode: 'host', myId: this.net.myId, seed, players: this.lobbyPlayers });
+    this.game = new Game(this, { mode: 'host', myId: this.net.myId, seed, players: this.lobbyPlayers, scenario: scn, save: sv });
     this._announce();
   }
 
   exitToMenu(screen = 'menu') {
     if (this.story.active) { this.story.onDone = null; this.story.finish(); }
-    if (this.game) { this.game.dispose(); this.game = null; }
+    if (this.game) { this.game.autosave(); this.game.dispose(); this.game = null; }
     clearInterval(this._announceTimer);
     this.lobby.stopHosting();
     if (this.net) { const n = this.net; this.net = null; n.destroy(); }
     this.room = null; this.lobbyPlayers = [];
     for (const id of [...this.audio.voices.keys()]) this.audio.removeVoice(id);
-    ['pause', 'shop', 'gameover', 'endcard', 'settings', 'controls'].forEach((m) => this.ui.modal(m, false));
+    ['pause', 'shop', 'gameover', 'endcard', 'settings', 'controls', 'saves'].forEach((m) => this.ui.modal(m, false));
     this.input.unlock();
     this.ui.hud(false);
-    if (screen === 'browser') this.openBrowser(); else this.ui.screen('menu');
+    this.setWorld(null);
+    this.refreshMapLists();
+    if (this._fromEditor && screen === 'menu') { this._fromEditor = false; this.editor.open(); }
+    else if (screen === 'browser') this.openBrowser(); else this.ui.screen('menu');
     this._renderStats();
     $('btnMicLobby').textContent = this.audio.micStream ? '🎤 Mikrofon aktiv' : '🎤 Mikrofon aktivieren';
   }

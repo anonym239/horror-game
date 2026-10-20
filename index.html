@@ -35,12 +35,16 @@
       <div class="title" data-text="HOLLOW PINES">HOLLOW PINES</div>
       <div class="subtitle">Koop-Horror im Wald · 1–4 Spieler</div>
       <label class="name-row">Dein Name <input id="nameInput" maxlength="14" spellcheck="false" /></label>
+      <label class="name-row">Karte <select id="mapSelect"></select></label>
       <div class="menu-buttons">
+        <button class="btn primary hidden" id="btnContinue">▶ Weiterspielen</button>
         <button class="btn primary" id="btnSolo">Einzelspieler</button>
         <button class="btn" id="btnMulti">Mehrspieler · Server-Browser <span id="menuRooms" class="pill"></span></button>
         <button class="btn ghost" id="btnStory">▶ Story ansehen</button>
         <button class="btn ghost" id="btnSettings">Einstellungen</button>
         <button class="btn ghost" id="btnControls">Steuerung</button>
+        <button class="btn ghost" id="btnEditor">🛠 Editor – eigene Karten bauen</button>
+        <button class="btn ghost" id="btnLoad">💾 Spiel laden</button>
       </div>
       <div id="stats" class="stats"></div>
     </div>
@@ -109,6 +113,11 @@
         <div id="roomCode" class="room-code">-----</div>
         <button class="btn small" id="btnCopy">Kopieren</button>
       </div>
+      <div id="lobbyHostOpts" class="lobby-opts">
+        <label>Karte <select id="lobbyMap"></select></label>
+        <label>Spielstand <select id="lobbySave"></select></label>
+      </div>
+      <div id="lobbyMapInfo" class="hint"></div>
       <ul id="lobbyPlayers" class="player-list"></ul>
       <div class="mic-row">
         <button class="btn small" id="btnMicLobby">🎤 Mikrofon aktivieren</button>
@@ -141,7 +150,7 @@
       <div class="mic-row"><span>Pegel</span><div class="meter"><div id="setMic"></div></div></div>
       <label class="check"><input type="checkbox" id="optFps" /> FPS anzeigen</label>
       <label class="check"><input type="checkbox" id="optFull" /> Automatisch Vollbild beim ersten Klick</label>
-      <p class="hint">Grafikänderungen werden beim nächsten Laden aktiv.</p>
+      <p class="hint" id="setHint">Grafikänderungen brauchen ein Neuladen – dein Spiel wird vorher gespeichert und läuft danach genau dort weiter.</p>
       <div class="row-end"><button class="btn" id="btnApplyReload">Übernehmen &amp; neu laden</button><button class="btn primary" id="btnCloseSettings">Fertig</button></div>
     </div>
   </div>
@@ -149,28 +158,15 @@
   <div id="controls" class="modal">
     <div class="panel">
       <h2>Steuerung</h2>
+      <p class="hint">Klicke auf eine Taste und drücke dann die neue Taste. Ist sie schon belegt, werden die beiden getauscht. <kbd>Esc</kbd> bricht ab.</p>
+      <div id="keyList" class="keys keybinds"></div>
       <div class="keys">
-        <div><kbd>W A S D</kbd> Bewegen</div>
-        <div><kbd>Shift</kbd> Sprinten</div>
-        <div><kbd>Leertaste</kbd> Springen</div>
-        <div><kbd>C</kbd> Ducken (leiser)</div>
-        <div><kbd>E</kbd> Aufheben</div>
-        <div><kbd>G</kbd> Ablegen</div>
-        <div><kbd>1 2 3</kbd> / <kbd>Mausrad</kbd> Slot wechseln</div>
+        <div><kbd>Mausrad</kbd> Slot wechseln</div>
         <div><kbd>Linksklick</kbd> Werfen</div>
-        <div><kbd>F</kbd> Taschenlampe</div>
-        <div><kbd>Q</kbd> Item-Scanner (zeigt Beute, im Shop kaufen)</div>
-        <div><kbd>B</kbd> Böller werfen (lockt Monster weg)</div>
-        <div><kbd>V</kbd> Polenböller werfen (5× Explosion, verscheucht Monster)</div>
-        <div><kbd>X</kbd> Geisterblick-Brille (Monster durch Wände sehen, Shop)</div>
-        <div><kbd>T</kbd> Adrenalin-Spritze (Shop)</div>
-        <div><kbd>J</kbd> Hupe am Van (lockt Monster zum Van)</div>
-        <div><kbd>R</kbd> Van-Radio: Sender wechseln</div>
-        <div><kbd>H</kbd> (halten, am Van) Abfahren</div>
-        <div><kbd>M</kbd> Mikrofon stumm</div>
         <div><kbd>Tab</kbd> Spielerliste</div>
         <div><kbd>Esc</kbd> Pause</div>
       </div>
+      <div class="row-end"><button class="btn small ghost" id="btnKeysReset">Standard-Belegung</button></div>
       <div class="tips">
         <b>Tipps:</b> Am Van lädt die Taschenlampe auf und Monster kommen nicht nah heran. Zerbrechliches verliert bei Stößen an Wert.
         Die Puppe erstarrt, solange jemand sie ansieht – mit Licht auch aus größerer Entfernung.
@@ -260,9 +256,10 @@
       <h2>Pause</h2>
       <div class="menu-buttons">
         <button class="btn primary" id="btnResume">Weiterspielen</button>
+        <button class="btn" id="btnPauseSave">💾 Speichern</button>
         <button class="btn" id="btnPauseSettings">Einstellungen</button>
         <button class="btn" id="btnPauseControls">Steuerung</button>
-        <button class="btn ghost" id="btnQuit">Spiel verlassen</button>
+        <button class="btn ghost" id="btnQuit">Spiel verlassen (wird gespeichert)</button>
       </div>
       <div id="pauseCode" class="hint"></div>
       <ul id="pausePlayers" class="player-list small"></ul>
@@ -274,6 +271,48 @@
       <h2 id="msgTitle">Hinweis</h2>
       <p id="msgText"></p>
       <div class="row-end"><button class="btn primary" id="btnMsgOk">OK</button></div>
+    </div>
+  </div>
+
+  <!-- Spielstände -->
+  <div id="saves" class="modal">
+    <div class="panel saves-panel">
+      <h2 id="savesTitle">Spielstände</h2>
+      <div id="savesNew" class="saves-new">
+        <input id="saveName" maxlength="30" placeholder="Name für den Spielstand" spellcheck="false" />
+        <button class="btn primary" id="btnSaveNew">Als neuen Spielstand speichern</button>
+      </div>
+      <div id="savesList" class="saves-list"></div>
+      <div class="row-end"><span id="savesHint" class="hint"></span><button class="btn" id="btnSavesClose">Schließen</button></div>
+    </div>
+  </div>
+
+  <!-- Editor -->
+  <div id="editor" class="screen editor-screen">
+    <div class="ed-top">
+      <button class="btn small ghost" id="edBack">← Menü</button>
+      <input id="edName" class="ed-name" maxlength="40" spellcheck="false" />
+      <span id="edStatus" class="hint ed-status"></span>
+      <div class="ed-actions">
+        <button class="btn small" id="edNew">Neu</button>
+        <button class="btn small" id="edOpen">📂 Öffnen / Vorlagen</button>
+        <button class="btn small" id="edImport">Import</button>
+        <button class="btn small" id="edExport">Export</button>
+        <button class="btn small primary" id="edSave">💾 Speichern</button>
+        <button class="btn small primary" id="edTest">▶ Testen</button>
+      </div>
+    </div>
+    <div class="ed-main">
+      <aside id="edSide" class="ed-side"></aside>
+      <div class="ed-canvas-wrap"><canvas id="edCanvas"></canvas></div>
+    </div>
+    <input type="file" id="edFile" accept=".json,application/json" hidden />
+  </div>
+  <div id="edOpenModal" class="modal">
+    <div class="panel saves-panel">
+      <h2>Szenario öffnen</h2>
+      <div id="edList" class="saves-list"></div>
+      <div class="row-end"><button class="btn" id="edOpenClose">Schließen</button></div>
     </div>
   </div>
 

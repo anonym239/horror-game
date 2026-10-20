@@ -54,12 +54,11 @@ jobs:
             Falls Windows warnt („Der Computer wurde durch Windows geschützt“): *Weitere Informationen* → *Trotzdem ausführen*.
 
             ### Neu in dieser Version
-            - Geisterblick-Brille (X): teures Premium-Gadget ab Tag 1 – zeigt alle Monster rot durch Wände, 3 Stufen
-            - Van-Upgrade: Discokugel, Kühlbox (Ausdauer lädt schnell), Radio mit 4 Sendern (R), Hupe als Monster-Köder (J)
-            - Adrenalin-Spritze (T): 8 s unendlich Ausdauer und +30 % Tempo
-            - Verstecken in den Camp-Hütten: Monster können dich dort nicht sehen
-            - Item-Scanner muss jetzt im Shop gekauft werden; Scanner-Fehler mit Items im Inventar behoben
-            - Neue Story mit Crane-SMS nach jeder Nacht und Tonbändern von 1987, lautere Van-Musik, Easter Eggs
+            - 🛠 Editor: eigene Karten bauen (18 Objekte, See, Spawn-Punkte), beliebig viele Monster, Van frei gestalten (Farbe, Größe, Ausstattung, Radio), eigene Regeln, 4 Vorlagen, Export/Import
+            - Eigene Karten im Mehrspieler: Host wählt in der Lobby Karte oder Spielstand, Freunde bekommen die Karte automatisch
+            - 💾 Spielstände: speichern, überschreiben, löschen, laden – plus Autosave und Speichern beim Verlassen
+            - Grafik umstellen ohne Spielverlust: nach dem Neuladen geht es genau dort weiter
+            - Tastenbelegung frei anpassbar
           files: |
             desktop/dist/HollowPines-Setup.exe
             desktop/dist/HollowPines.exe

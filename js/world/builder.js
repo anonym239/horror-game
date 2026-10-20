@@ -42,18 +42,19 @@ export class Builder {
   constructor(collision) {
     this.col = collision;
     this.parts = {};
-    this.f = { x: 0, y: 0, z: 0, rot: 0, c: 1, s: 0 };
+    this.f = { x: 0, y: 0, z: 0, rot: 0, c: 1, s: 0, k: 1 };
     this.lootSpots = [];
   }
-  setFrame(x, y, z, rot = 0) { this.f = { x, y, z, rot, c: Math.cos(rot), s: Math.sin(rot) }; }
-  toWorld(lx, lz) { const f = this.f; return [f.x + lx * f.c + lz * f.s, f.z - lx * f.s + lz * f.c]; }
+  /** k: Skalierung des lokalen Rahmens (z. B. größerer Van im Editor). */
+  setFrame(x, y, z, rot = 0, k = 1) { this.f = { x, y, z, rot, c: Math.cos(rot), s: Math.sin(rot), k }; }
+  toWorld(lx, lz) { const f = this.f; lx *= f.k; lz *= f.k; return [f.x + lx * f.c + lz * f.s, f.z - lx * f.s + lz * f.c]; }
 
   _add(key, geo, lx, ly, lz, rotY = 0, rx = 0, rz = 0) {
     const [wx, wz] = this.toWorld(lx, lz);
     _e.set(rx, this.f.rot + rotY, rz, 'YXZ');
     _q.setFromEuler(_e);
-    _p.set(wx, this.f.y + ly, wz);
-    _m.compose(_p, _q, _s);
+    _p.set(wx, this.f.y + ly * this.f.k, wz);
+    _m.compose(_p, _q, _s.setScalar(this.f.k));
     const g = geo.index ? geo.toNonIndexed() : geo;
     g.applyMatrix4(_m);
     (this.parts[key] || (this.parts[key] = [])).push(g);
@@ -69,7 +70,8 @@ export class Builder {
   }
   collider(lx, ly, lz, w, h, d, rot = 0, tag) {
     const [wx, wz] = this.toWorld(lx, lz);
-    this.col.addBox(wx, wz, w / 2, d / 2, this.f.rot + rot, this.f.y + ly, this.f.y + ly + h, tag);
+    const k = this.f.k;
+    this.col.addBox(wx, wz, w * k / 2, d * k / 2, this.f.rot + rot, this.f.y + ly * k, this.f.y + (ly + h) * k, tag);
   }
   cyl(key, lx, ly, lz, rt, rb, h, seg = 8, o = {}) {
     const g = new THREE.CylinderGeometry(rt, rb, h, seg);
@@ -80,7 +82,7 @@ export class Builder {
   geo(key, g, lx, ly, lz, rot = 0, rx = 0, rz = 0) { this._add(key, g, lx, ly, lz, rot, rx, rz); }
   loot(lx, ly, lz, kind = 'inside') {
     const [wx, wz] = this.toWorld(lx, lz);
-    this.lootSpots.push({ x: wx, y: this.f.y + ly, z: wz, kind });
+    this.lootSpots.push({ x: wx, y: this.f.y + ly * this.f.k, z: wz, kind });
   }
 
   build(materials, shadows) {

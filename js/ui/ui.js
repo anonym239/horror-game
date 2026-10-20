@@ -18,7 +18,7 @@ export class UI {
   }
 
   screen(id) {
-    for (const s of ['loading', 'menu', 'lobby', 'browser']) $(s).classList.toggle('show', s === id);
+    for (const s of ['loading', 'menu', 'lobby', 'browser', 'editor']) $(s).classList.toggle('show', s === id);
   }
   modal(id, on = true) { $(id).classList.toggle('show', on); }
   isModal(id) { return $(id).classList.contains('show'); }
