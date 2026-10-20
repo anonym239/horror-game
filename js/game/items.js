@@ -18,9 +18,12 @@ export const LOOT = {
   toolbox: { name: 'Werkzeugkiste', val: [35, 70], mass: 7, fragile: 0.1, sound: 'metal', shape: { type: 'box', x: 0.55, y: 0.25, z: 0.22 }, rarity: 8 },
   idol:    { name: 'Goldenes Idol', val: [220, 380], mass: 6, fragile: 0.35, sound: 'metal', shape: { type: 'box', x: 0.25, y: 0.5, z: 0.25 }, rarity: 2, rare: true },
   boeller: { name: 'Böller', val: [0, 0], mass: 0.4, fragile: 0, sound: 'soft', shape: { type: 'cyl', r: 0.06, h: 0.22 }, rarity: 0, tool: true },
+  polen:   { name: 'Polenböller', val: [0, 0], mass: 0.9, fragile: 0, sound: 'soft', shape: { type: 'cyl', r: 0.1, h: 0.3 }, rarity: 0, tool: true },
 };
+/** Sprengkörper: Zündzeit, Lärm-Radius, Stärke (1 = normaler Böller) */
+export const EXPLOSIVES = { boeller: { fuse: 2.6, noise: 85, power: 1 }, polen: { fuse: 3.2, noise: 160, power: 5 } };
 
-export const ICONS = { vase: '🏺', radio: '📻', teddy: '🧸', lantern: '🏮', camera: '📷', skull: '💀', tv: '📺', jewels: '💎', jar: '🫙', doll: '🪆', clock: '⏱️', toolbox: '🧰', idol: '🗿', boeller: '🧨' };
+export const ICONS = { vase: '🏺', radio: '📻', teddy: '🧸', lantern: '🏮', camera: '📷', skull: '💀', tv: '📺', jewels: '💎', jar: '🫙', doll: '🪆', clock: '⏱️', toolbox: '🧰', idol: '🗿', boeller: '🧨', polen: '💥' };
 
 export function pickLootType(rnd, kind) {
   const entries = Object.entries(LOOT).filter(([, d]) => !d.tool);
@@ -137,6 +140,14 @@ export function makeItemMesh(type) {
       add(new THREE.CylinderGeometry(0.05, 0.05, 0.2, 10), M('fire', 0xc81010, { roughness: 0.6 }));
       add(new THREE.CylinderGeometry(0.005, 0.005, 0.08, 4), M('fuse', 0x222222), 0, 0.13, 0);
       break;
+    case 'polen': {
+      const red = M('polenRed', 0xd81818, { roughness: 0.5, emissive: 0x300000 });
+      add(new THREE.CylinderGeometry(0.1, 0.1, 0.28, 12), red);
+      for (const y of [-0.08, 0.08]) add(new THREE.CylinderGeometry(0.102, 0.102, 0.05, 12), M('polenWhite', 0xf0f0f0, { roughness: 0.6 }), 0, y, 0);
+      add(new THREE.CylinderGeometry(0.006, 0.006, 0.1, 4), M('fuse', 0x222222), 0, 0.19, 0);
+      add(new THREE.SphereGeometry(0.018, 6, 6), M('spark', 0xffd040, { emissive: 0xffa000, emissiveIntensity: 3 }), 0, 0.24, 0);
+      break;
+    }
   }
   return g;
 }

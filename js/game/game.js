@@ -3,10 +3,10 @@ import * as THREE from 'three';
 import { LocalPlayer } from './player.js';
 import { Avatar, PLAYER_CSS } from './avatar.js';
 import { MonsterView, MonsterAI, MONSTER_INFO } from './monsters.js';
-import { LOOT, ICONS, pickLootType, makeItemMesh } from './items.js';
+import { LOOT, ICONS, EXPLOSIVES, pickLootType, makeItemMesh } from './items.js';
 import { Physics } from '../engine/physics.js';
 import { mulberry32, clamp, damp, angleLerp } from '../engine/rng.js';
-import { $, SHOP, esc } from '../ui/ui.js';
+import { $, SHOP, UPG_DEFAULT, esc } from '../ui/ui.js';
 import { Scares } from './scares.js';
 
 export const NIGHT_LEN = 360;
@@ -26,8 +26,9 @@ export class Game {
     this.monsters = new Map();
     this.phase = 'wait';
     this.night = 0; this.quota = 0; this.banked = 0; this.money = 0; this.timeLeft = NIGHT_LEN;
-    this.upg = { battery: 0, stamina: 0, strength: 0, scanner: 0 };
-    this.boellers = 2;
+    this.upg = UPG_DEFAULT();
+    this.boellers = 2; this.polen = 0;
+    this.nightLen = NIGHT_LEN; this._radarT = 0;
     this.event = null;
     this.stats = { loot: 0, deaths: 0, nights: 0, best: null };
     this.danger = 0; this.scanCd = 0; this.leaveHold = 0; this.specIdx = 0;
@@ -139,13 +140,13 @@ export class Game {
       case 'grab': if (this.isHost) this._hostGrab(from, m.id); return;
       case 'drop': if (this.isHost) this._hostDrop(from, m.v); return;
       case 'sel': if (this.isHost) this._hostSelect(from, m.i); return;
-      case 'boeller': if (this.isHost) this._hostBoeller(m.p, m.v); return;
+      case 'boeller': if (this.isHost) this._hostBoeller(m.p, m.v, m.k === 'polen' ? 'polen' : 'boeller'); return;
       case 'buy': if (this.isHost) this._hostBuy(m.k); return;
       case 'leave': if (this.isHost && this._allInVan()) this.endNight('leave'); return;
       case 'resync': {
         if (!this.isHost || this.phase !== 'play') return;
-        const items = [...this.items.values()].filter((it) => it.type !== 'boeller').map((it) => [it.id, it.type, it.value, it.body.position.x, it.body.position.y, it.body.position.z]);
-        this.net.send(from, { t: 'night', n: this.night, quota: this.quota, event: this.event, items, money: this.money, upg: this.upg, boellers: this.boellers, stats: this.stats });
+        const items = [...this.items.values()].filter((it) => !it.def.tool).map((it) => [it.id, it.type, it.value, it.body.position.x, it.body.position.y, it.body.position.z]);
+        this.net.send(from, { t: 'night', n: this.night, quota: this.quota, event: this.event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, nightLen: this.nightLen, stats: this.stats });
         return;
       }
 
@@ -160,14 +161,18 @@ export class Game {
         if (m.d > 0) this.ui.float(`−${m.d} $`, _v, '#ff5a4a', 1.2);
         return;
       }
-      case 'spawn': this._createItem(...m.item); if (m.item[1] === 'boeller') this.audio.fuse(new THREE.Vector3(m.item[3], m.item[4], m.item[5])); return;
+      case 'spawn': this._createItem(...m.item); if (EXPLOSIVES[m.item[1]]) this.audio.fuse(new THREE.Vector3(m.item[3], m.item[4], m.item[5])); return;
       case 'rm': this._removeItem(m.id); return;
       case 'ev': {
         _v.set(m.x || 0, m.y || 0, m.z || 0);
         if (m.k === 'boom') {
-          this.audio.boom(_v.clone());
-          this.boomLight.position.copy(_v).y += 1; this.boomLight.intensity = 80;
-          if (this.local.pos.distanceTo(_v) < 12) this.local.shake = 0.6;
+          const pw = m.pw || 1, d = this.local.pos.distanceTo(_v);
+          if (pw > 1) this.audio.bigBoom(_v.clone()); else this.audio.boom(_v.clone());
+          this.boomLight.position.copy(_v).y += 1 + pw * 0.3;
+          this.boomLight.intensity = 80 * pw; this.boomLight.distance = 40 * Math.sqrt(pw);
+          if (d < 12 * Math.sqrt(pw)) this.local.shake = Math.min(1, 0.6 * Math.sqrt(pw));
+          if (pw > 1 && d < 30) this.ui.flash(Math.max(0.15, 0.7 - d / 45));
+          if (pw > 1 && m.n) this.ui.toast(`💥 ${m.n} Monster verscheucht!`, '#ff8a4a', 2);
         } else if (m.k === 'roar') {
           this.audio.tone(70, 40, 1.2, 0.5, 'sawtooth', 0, _v.clone());
           this.audio.tone(140, 60, 1.0, 0.3, 'sawtooth', 0.05, _v.clone());
@@ -219,7 +224,7 @@ export class Game {
     }
     const g = m.g;
     if (g[5] && g[5] !== this.night && performance.now() - (this._resyncAt || 0) > 2000) { this._resyncAt = performance.now(); this.net.toHost({ t: 'resync' }); }
-    this.timeLeft = g[0]; this.banked = g[1]; this.quota = g[2]; this.money = g[3]; this.boellers = g[4];
+    this.timeLeft = g[0]; this.banked = g[1]; this.quota = g[2]; this.money = g[3]; this.boellers = g[4]; this.polen = g[6] || 0;
   }
 
   _sendSnapshot() {
@@ -238,19 +243,20 @@ export class Game {
       p: this.roster.map((r) => [r.id, r2(r.pos.x), r2(r.pos.y), r2(r.pos.z), r2(r.yaw), r2(r.pitch), r.crouch ? 1 : 0, r.flash ? 1 : 0, r.alive ? 1 : 0, r.inv, r.sel]),
       m: [...this.monsters.values()].map((mo) => mo.ai.snapshot()),
       i: items,
-      g: [Math.round(this.timeLeft), this.banked, this.quota, this.money, this.boellers, this.night],
+      g: [Math.round(this.timeLeft), this.banked, this.quota, this.money, this.boellers, this.night, this.polen],
     });
   }
 
   // ======================= Nacht-Ablauf =======================
   startNight(n, fresh = false) {
     if (fresh) {
-      this.money = 0; this.upg = { battery: 0, stamina: 0, strength: 0, scanner: 0 }; this.boellers = 2;
+      this.money = 0; this.upg = UPG_DEFAULT(); this.boellers = 2; this.polen = 0;
       this.stats = { loot: 0, deaths: 0, nights: 0, best: null };
     }
     const rnd = mulberry32(this.seed + n * 977 + Math.floor(Math.random() * 1e6));
     const np = this.players.size;
-    const quota = Math.round(((200 + 190 * (n - 1) + 45 * (n - 1) ** 2) * (1 + 0.45 * (np - 1))) / 10) * 10;
+    const quota = Math.round(((200 + 190 * (n - 1) + 45 * (n - 1) ** 2) * (1 + 0.45 * (np - 1)) * (1 - 0.1 * (this.upg.quota || 0))) / 10) * 10;
+    const nightLen = NIGHT_LEN + 45 * (this.upg.overtime || 0);
     let event = null;
     if (n >= 2 && rnd() < 0.3) event = rnd() < 0.5 ? 'bloodmoon' : 'fog';
     const spots = this.world.lootSpots.slice();
@@ -275,7 +281,7 @@ export class Game {
     if (n >= 6) plan.push('crawler');
     if (n >= 7) plan.push('stalker');
     if (event === 'bloodmoon') plan.push('stalker');
-    this.emit({ t: 'night', n, quota, event, items, money: this.money, upg: this.upg, boellers: this.boellers, stats: this.stats });
+    this.emit({ t: 'night', n, quota, event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, nightLen, stats: this.stats });
     // Monster (nur Host-KI)
     const ms = this.world.monsterSpawns.slice();
     plan.forEach((type, i) => {
@@ -297,8 +303,9 @@ export class Game {
 
   _onNight(m) {
     this._clearNight();
-    this.night = m.n; this.quota = m.quota; this.event = m.event; this.banked = 0; this.timeLeft = NIGHT_LEN;
-    this.money = m.money; this.upg = { ...m.upg }; this.boellers = m.boellers;
+    this.nightLen = m.nightLen || NIGHT_LEN;
+    this.night = m.n; this.quota = m.quota; this.event = m.event; this.banked = 0; this.timeLeft = this.nightLen;
+    this.money = m.money; this.upg = { ...UPG_DEFAULT(), ...m.upg }; this.boellers = m.boellers; this.polen = m.polen || 0;
     if (m.stats) this.stats = { ...m.stats };
     this.quotaAnnounced = false; this._deadT = 0;
     for (const it of m.items) this._createItem(...it);
@@ -329,6 +336,9 @@ export class Game {
     clearTimeout(this._introTO);
     this._introTO = setTimeout(() => intro.classList.add('hidden'), 5000);
     if (m.n === 1) this._tips();
+    this.audio.stopShopMusic();
+    this.world.setParty(true);
+    this.audio.startPartyMusic(new THREE.Vector3(this.world.van.x, this.world.height(this.world.van.x, this.world.van.z) + 1.4, this.world.van.z - 0.6));
     this.audio.startAmbience(1);
     this.audio.engine(new THREE.Vector3(this.world.van.x, this.local.pos.y + 1, this.world.van.z));
     if (!this.input.locked) this.input.lock();
@@ -363,12 +373,13 @@ export class Game {
     this.emit({ t: 'end', res });
     setTimeout(() => {
       if (this.disposed) return;
-      if (success) this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers });
+      if (success) this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen });
       else this.emit({ t: 'over', stats: this.stats, night: this.night });
     }, 5500);
   }
 
   _onEnd(res) {
+    const first = this.phase !== 'end'; // Host sendet Phasen-Nachrichten wiederholt → Sounds nur einmal
     this.phase = 'end';
     this.audio.stopAmbience(); this.audio.setDanger(0);
     this.engine.fx.danger = 0;
@@ -388,14 +399,23 @@ export class Game {
     this.ui.modal('endcard', true);
     this.ui.hud(false);
     this.input.unlock();
+    this.world.setParty(false);
+    this.audio.stopPartyMusic();
+    // Van fährt los (Abfahrt oder 04:00) → Motor-Sound; geschaffter Tag → Fanfare
+    if (!first) return;
+    if (res.reason !== 'dead') this.audio.vanDriveAway();
+    if (res.success) { clearTimeout(this._fanfareTO); this._fanfareTO = setTimeout(() => !this.disposed && this.audio.dayComplete(), res.reason !== 'dead' ? 1800 : 200); }
   }
 
   _onShop(m) {
+    const paid = this.phase === 'shop' && m.money < this.money;
     this.phase = 'shop';
-    this.money = m.money; this.upg = { ...m.upg }; this.boellers = m.boellers;
+    this.money = m.money; this.upg = { ...UPG_DEFAULT(), ...m.upg }; this.boellers = m.boellers; this.polen = m.polen || 0;
     this.ui.modal('endcard', false);
     this.ui.modal('shop', true);
-    this.ui.shop(this.money, this.upg, this.boellers, this.isHost, (k) => this.buy(k));
+    this.ui.shop(this.money, this.upg, { boellers: this.boellers, polen: this.polen }, this.night, this.isHost, (k) => this.buy(k));
+    if (paid) this.audio.cash();
+    this.audio.startShopMusic();
     this.input.unlock();
   }
 
@@ -404,19 +424,20 @@ export class Game {
   }
   _hostBuy(k) {
     if (this.phase !== 'shop') return;
-    const it = SHOP.find((s) => s.k === k); if (!it) return;
+    const it = SHOP.find((s) => s.k === k); if (!it || it.day > this.night) return; // noch nicht freigeschaltet
     const lvl = it.consumable ? 0 : this.upg[k] || 0;
     const price = it.price(lvl);
     if (this.money < price || (!it.consumable && lvl >= it.max)) return;
     this.money -= price;
-    if (it.consumable) this.boellers += 2; else this.upg[k] = lvl + 1;
-    this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, bought: k });
+    if (it.consumable) this[it.store] += it.add; else this.upg[k] = lvl + 1;
+    this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, bought: k });
   }
 
   nextNight() { if (this.isHost && this.phase === 'shop') this.startNight(this.night + 1); }
 
   _onOver(m) {
     this.phase = 'over';
+    this.audio.stopShopMusic();
     this.ui.modal('endcard', false);
     const s = m.stats;
     const best = this.app.saveStats(m.night, s.loot);
@@ -442,7 +463,7 @@ export class Game {
     mesh.position.set(x, y, z);
     this.engine.scene.add(mesh);
     mesh.traverse((o) => { o.userData.itemId = id; });
-    const it = { id, type, def, value, max: value, mesh, heldBy: null, tp: new THREE.Vector3(x, y, z), tq: new THREE.Quaternion(), lastHit: 0, fuse: type === 'boeller' ? 2.6 : 0, dirty: true };
+    const it = { id, type, def, value, max: value, mesh, heldBy: null, tp: new THREE.Vector3(x, y, z), tq: new THREE.Quaternion(), lastHit: 0, fuse: EXPLOSIVES[type] ? EXPLOSIVES[type].fuse : 0, dirty: true };
     if (this.isHost) it.body = this.physics.addItem(def.shape, def.mass, { x, y, z }, it);
     if (type === 'idol') {
       const glow = new THREE.PointLight(0xffc040, 0, 3);
@@ -557,7 +578,7 @@ export class Game {
     it.lastHit = now;
     let dmg = 0;
     if (it.def.fragile > 0 && v > 3.2 && it.value > 0) {
-      dmg = Math.min(it.value, Math.round((v - 3.2) * it.def.fragile * it.max * 0.07));
+      dmg = Math.min(it.value, Math.round((v - 3.2) * it.def.fragile * it.max * 0.07 * (1 - 0.3 * (this.upg.padding || 0))));
       it.value -= dmg; it.dirty = true;
     }
     const p = body.position;
@@ -565,11 +586,12 @@ export class Game {
     this.emit({ t: 'imp', x: p.x, y: p.y, z: p.z, s: Math.min(v, 12), snd: it.def.sound, d: dmg });
   }
 
-  _hostBoeller(p, v) {
-    if (this.boellers <= 0 || this.phase !== 'play') return;
-    this.boellers--;
+  _hostBoeller(p, v, kind = 'boeller') {
+    const store = kind === 'polen' ? 'polen' : 'boellers';
+    if (this[store] <= 0 || this.phase !== 'play') return;
+    this[store]--;
     const id = this.nextItemId++;
-    const item = [id, 'boeller', 0, p[0], p[1], p[2]];
+    const item = [id, kind, 0, p[0], p[1], p[2]];
     this.emit({ t: 'spawn', item });
     const it = this.items.get(id);
     if (it) { it.body.velocity.set(v[0], v[1], v[2]); it.body.angularVelocity.set(Math.random() * 8, Math.random() * 8, 0); }
@@ -593,17 +615,23 @@ export class Game {
     const w = this.world;
     for (const it of [...this.items.values()]) {
       const b = it.body;
-      if (it.type === 'boeller') {
+      const ex = EXPLOSIVES[it.type];
+      if (ex) {
         it.fuse -= dt;
         if (it.fuse <= 0) {
-          this._noises.push({ x: b.position.x, z: b.position.z, r: 85 });
-          this._boomAt = { x: b.position.x, z: b.position.z, t: 9 };
-          this.emit({ t: 'ev', k: 'boom', x: b.position.x, y: b.position.y, z: b.position.z });
+          const bx = b.position.x, bz = b.position.z;
+          this._noises.push({ x: bx, z: bz, r: ex.noise });
+          this._boomAt = { x: bx, z: bz, t: 9, r: ex.noise };
+          // Polenböller: Druckwelle verscheucht Monster im Umkreis
+          let n = 0;
+          if (ex.power > 1) for (const mo of this.monsters.values()) if (mo.ai.blast(bx, bz, 18)) n++;
+          this.emit({ t: 'ev', k: 'boom', x: bx, y: b.position.y, z: bz, pw: ex.power, n });
           this.emit({ t: 'rm', id: it.id });
         }
         continue;
       }
       if (!it.heldBy && w.inVanZone(b.position.x, b.position.z) && b.position.y < w.height(b.position.x, b.position.z) + 2.2) {
+        it.value = Math.round(it.value * (1 + 0.1 * (this.upg.haggle || 0))); // Crane-Deal
         this.banked += it.value; this.money += it.value; this.stats.loot += it.value;
         if (!this.stats.best || it.value > this.stats.best.v) this.stats.best = { name: it.def.name, v: it.value };
         this.emit({ t: 'dep', id: it.id, v: it.value, n: it.def.name, x: b.position.x, y: b.position.y, z: b.position.z });
@@ -629,7 +657,7 @@ export class Game {
 
   // ======================= Tod & Jumpscare =======================
   _hostKill(p, ai) {
-    if (!p.alive) return;
+    if (!p.alive || p.safe) return; // Safe-Zone im Van
     p.alive = false;
     this._hostDropAll(p.id);
     this.stats.deaths++;
@@ -717,7 +745,8 @@ export class Game {
     if (!p.alive || this.phase !== 'play') { this.ui.set('prompt', 'html', ''); this.ui.set('crosshair', 'class:active', false); p.carryMass = 0; return; }
     if (this.scanCd > 0) this.scanCd -= dt;
     if (inp.hit('KeyQ') && this.scanCd <= 0) this._scan();
-    if (inp.hit('KeyB')) this._throwBoeller();
+    if (inp.hit('KeyB')) this._throwBoeller('boeller');
+    if (inp.hit('KeyV')) this._throwBoeller('polen');
     const me = this.players.get(this.myId);
 
     // Slot-Wahl wie in Minecraft: 1/2/3 oder Mausrad
@@ -742,7 +771,7 @@ export class Game {
       if (look.def.mass >= 6) tags.push('schwer');
       const full = me.inv.every((x) => x);
       prompt = full ? `<span style="color:#ff5a4a">Inventar voll (3/3)</span> – erst etwas ablegen [G]`
-        : look.type === 'boeller' ? '[E] Böller aufheben' : `[E] <b>${look.def.name}</b> — ${look.value} $${tags.length ? ' · ' + tags.join(', ') : ''}`;
+        : look.def.tool ? `[E] ${look.def.name} aufheben` : `[E] <b>${look.def.name}</b> — ${look.value} $${tags.length ? ' · ' + tags.join(', ') : ''}`;
       if (inp.hit('KeyE')) { if (full) this.audio.denied(); else this._grab(look.id); }
     } else if (hand) {
       prompt = `<b>${hand.def.name}</b> ${hand.value} $ · [G] Ablegen · [Klick] Werfen`;
@@ -817,13 +846,14 @@ export class Game {
     if (this.isHost) this._hostDrop(this.myId, vel); else this.net.toHost({ t: 'drop', v: vel });
   }
 
-  _throwBoeller() {
-    if (this.boellers <= 0) { this.audio.denied(); this.ui.toast('Keine Böller mehr (Shop)', '#888', 1.2); return; }
+  _throwBoeller(kind = 'boeller') {
+    const polen = kind === 'polen';
+    if ((polen ? this.polen : this.boellers) <= 0) { this.audio.denied(); this.ui.toast(polen ? 'Keine Polenböller – ab Tag 2 im Shop' : 'Keine Böller mehr (Shop)', '#888', 1.2); return; }
     const cam = this.engine.camera, f = this.local.forward;
     const p = [cam.position.x + f.x * 0.6, cam.position.y + f.y * 0.6, cam.position.z + f.z * 0.6];
     const v = [f.x * 13, f.y * 13 + 3, f.z * 13];
-    if (this.isHost) this._hostBoeller(p, v); else { this.net.toHost({ t: 'boeller', p, v }); }
-    this.ui.toast('🧨 Böller geworfen!', '#ffb547', 1.2);
+    if (this.isHost) this._hostBoeller(p, v, kind); else { this.net.toHost({ t: 'boeller', p, v, k: kind }); }
+    this.ui.toast(polen ? '💥 POLENBÖLLER! In Deckung!' : '🧨 Böller geworfen!', polen ? '#ff5a4a' : '#ffb547', 1.4);
   }
 
   _scan() {
@@ -832,9 +862,9 @@ export class Game {
     const range = 24 + lvl * 12;
     const entries = [];
     for (const it of this.items.values()) {
-      if (it.type === 'boeller') continue;
+      if (it.def.tool) continue;
       if (it.mesh.position.distanceTo(this.local.pos) > range) continue;
-      entries.push({ pos: it.mesh.position.clone(), obj: it.mesh, html: `${it.def.name} <b>${it.value} $</b>` });
+      entries.push({ pos: it.mesh.position.clone(), obj: it.mesh, html: this.upg.goldscan && it.value >= 150 ? `<span style="color:#ffd040">✨ ${it.def.name} <b>${it.value} $</b></span>` : `${it.def.name} <b>${it.value} $</b>` });
     }
     const vz = this.world.vanZone;
     entries.push({ pos: new THREE.Vector3(vz.x, vz.y + 2.5, vz.z), html: '🚐 <b>VAN</b> – Abgabe' });
@@ -881,11 +911,12 @@ export class Game {
       this.physics.step(dt);
       for (const r of this.players.values()) {
         if (!r.isLocal) r.pos.lerp(r.tPos, 1 - Math.exp(-14 * dt));
-        r.inVan = this.world.inVanZone(r.pos.x, r.pos.z, 3);
+        r.safe = this.world.inSafeZone(r.pos.x, r.pos.z) && r.pos.y > this.world.height(r.pos.x, r.pos.z) + 0.3;
+        r.inVan = r.safe || this.world.inVanZone(r.pos.x, r.pos.z, 3);
       }
       this._hostItems(dt);
-      for (const r of this.players.values()) if (r.alive && r.loud > 0.05) this._noises.push({ x: r.pos.x, z: r.pos.z, r: r.loud * 40 });
-      if (this._boomAt && (this._boomAt.t -= dt) > 0) this._noises.push({ x: this._boomAt.x, z: this._boomAt.z, r: 85 });
+      for (const r of this.players.values()) if (r.alive && !r.safe && r.loud > 0.05) this._noises.push({ x: r.pos.x, z: r.pos.z, r: r.loud * 40 });
+      if (this._boomAt && (this._boomAt.t -= dt) > 0) this._noises.push({ x: this._boomAt.x, z: this._boomAt.z, r: this._boomAt.r });
       const ctx = { players: this.roster, noises: this._noises, onKill: (p, ai) => this._hostKill(p, ai), onEvent: (k, d) => { if (k === 'roar') this.emit({ t: 'ev', k, ...d }); } };
       for (const mo of this.monsters.values()) {
         mo.ai.update(dt, ctx);
@@ -955,6 +986,9 @@ export class Game {
     this.danger = damp(this.danger, playing ? danger : 0, 3, dt);
     this.audio.setDanger(this.danger);
     eng.fx.danger = this.danger * 0.85;
+    this._radar(dt, playing);
+    this._localSafe = this.local.alive && this.phase === 'play' && this.world.inSafeZone(this.local.pos.x, this.local.pos.z) && this.local.pos.y > this.world.height(this.local.pos.x, this.local.pos.z) + 0.3;
+    this.audio.setPartyInside(this._localSafe);
     this.boomLight.intensity = Math.max(0, this.boomLight.intensity - dt * 160);
 
     this.scares.update(playing ? dt : 0);
@@ -968,11 +1002,22 @@ export class Game {
     this.ui.updateOverlays(dt);
   }
 
+  /** Monster-Radar (Shop-Upgrade): piept schneller, je näher ein aktives Monster ist. */
+  _radar(dt, playing) {
+    if (!this.upg.radar || !playing || !this.local.alive) { this.ui.set('hudRadar', 'text', ''); return; }
+    let best = Infinity;
+    for (const mo of this.monsters.values()) if (mo.view.anim >= 1) best = Math.min(best, mo.view.pos.distanceTo(this.local.pos));
+    if (best > 30) { this.ui.set('hudRadar', 'text', '📟 Radar: ruhig'); this.ui.set('hudRadar', 'class:cd', true); return; }
+    this.ui.set('hudRadar', 'text', `📟 MONSTER ${Math.round(best)} m`); this.ui.set('hudRadar', 'class:cd', false);
+    this._radarT -= dt;
+    if (this._radarT <= 0) { this._radarT = 0.25 + best / 30; this.audio.radarBeep(best < 12); }
+  }
+
   _hud() {
     if (this.phase !== 'play') return;
     const ui = this.ui, p = this.local;
     ui.set('hudNight', 'text', 'NACHT ' + this.night);
-    const prog = 1 - this.timeLeft / NIGHT_LEN;
+    const prog = 1 - this.timeLeft / this.nightLen;
     const mins = Math.floor(prog * 360);
     const hh = (22 + Math.floor(mins / 60)) % 24, mm = mins % 60;
     ui.set('hudClock', 'text', `${String(hh).padStart(2, '0')}:${String(Math.floor(mm / 5) * 5).padStart(2, '0')}`);
@@ -989,6 +1034,7 @@ export class Game {
     ui.set('hudMicIco', 'text', !this.audio.micEnabled ? '🚫' : this.micMuted ? '🔇' : '🎤');
     ui.set('hudMoney', 'text', String(this.money));
     ui.set('hudBoeller', 'text', String(this.boellers));
+    ui.set('hudPolen', 'text', String(this.polen));
     ui.set('hudScan', 'text', this.scanCd > 0 ? `Scanner ${Math.ceil(this.scanCd)}s` : 'Q  Scanner bereit');
     ui.set('hudScan', 'class:cd', this.scanCd > 0);
     const vz = this.world.vanZone;
@@ -999,7 +1045,7 @@ export class Game {
       const arrows = ['↑', '↖', '←', '↙', '↓', '↘', '→', '↗'];
       const idx = ((Math.round(rel / (Math.PI / 4)) % 8) + 8) % 8;
       ui.set('hudVan', 'text', `${arrows[idx]} Van ${Math.round(dist)} m`);
-    } else ui.set('hudVan', 'text', p.alive ? '🚐 Am Van – Beute in die gelbe Zone legen' : '');
+    } else ui.set('hudVan', 'text', !p.alive ? '' : this._localSafe ? '🛡️ SAFE ZONE – Monster sehen & hören dich nicht' : '🚐 Am Van – Beute in die gelbe Zone legen · Im Laderaum bist du sicher');
     const me = this.players.get(this.myId);
     if (me) {
       ui.set('hotbar', 'html', me.inv.map((id, j) => {
@@ -1023,6 +1069,9 @@ export class Game {
     this.engine.scene.remove(this.boomLight);
     this.engine.camera.remove(this.local.flash, this.local.flash.target, this.local.torch);
     this.scares.dispose();
+    clearTimeout(this._fanfareTO);
+    this.audio.stopShopMusic(); this.audio.stopPartyMusic();
+    this.world.setParty(false);
     this.audio.stopAmbience(); this.audio.setDanger(0);
     this.engine.fx.scare = 0; this.engine.fx.danger = 0; this.engine.fx.hurt = 0;
     this.world.setEvent(null);

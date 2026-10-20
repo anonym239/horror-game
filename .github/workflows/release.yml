@@ -1,11 +1,17 @@
-# Baut die Windows-Version (HollowPines.exe) und veröffentlicht sie als GitHub-Release.
-# Auslöser: ein Versions-Tag wie v1.0.0 (git tag v1.0.1 && git push --tags) oder manuell unter "Actions".
+# Baut die Windows-Version (Setup-Installer + portable .exe) und veröffentlicht sie als GitHub-Release.
+# Auslöser: ein Versions-Tag wie v1.1.0 (git tag v1.1.0 && git push --tags)
+# oder ohne Git: auf GitHub unter "Actions" → "Release (Windows .exe)" → "Run workflow" → Version eintragen.
 name: Release (Windows .exe)
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versions-Tag (z. B. v1.1.0)'
+        required: true
+        default: 'v1.1.0'
 
 permissions:
   contents: write
@@ -13,6 +19,8 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -24,23 +32,34 @@ jobs:
         working-directory: desktop
         run: npm install --no-audit --no-fund
 
-      - name: .exe bauen
+      - name: Setup-.exe und portable .exe bauen
         working-directory: desktop
-        run: npx electron-builder --win portable --publish never
+        run: npx electron-builder --win nsis portable --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Release veröffentlichen
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
-          name: Hollow Pines ${{ github.ref_type == 'tag' && github.ref_name || '(neuester Stand)' }}
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          name: Hollow Pines ${{ env.TAG }}
           body: |
             🌲 **Hollow Pines** – Koop-Horror für 1–4 Spieler.
 
-            **Windows:** `HollowPines.exe` herunterladen und doppelklicken (keine Installation nötig, startet im Vollbild).
+            ### Download (Windows)
+            - **`HollowPines-Setup.exe`** – Installer: wählt einen Ordner, legt Desktop- und Startmenü-Verknüpfung an, deinstallierbar über „Apps“.
+            - **`HollowPines.exe`** – portable Version, ohne Installation (Doppelklick genügt).
+
             Falls Windows warnt („Der Computer wurde durch Windows geschützt“): *Weitere Informationen* → *Trotzdem ausführen*.
 
-            **Im Browser:** einfach die Netlify-Seite öffnen.
-          files: desktop/dist/HollowPines.exe
+            ### Neu in dieser Version
+            - Story läuft beim ersten Spielen automatisch (ohne Überspringen), danach nicht mehr
+            - Shop schaltet jeden geschafften Tag neue Gadgets frei (bis Tag 7)
+            - Polenböller (Taste V): 5× Explosion, verscheucht Monster
+            - Van als Safe-Zone mit Party-Lights und Party-Musik – drinnen sehen und hören dich die Monster nicht
+            - Neue Sounds: Tag geschafft, Van fährt weg, Shop-Musik, Monster-Radar
+          files: |
+            desktop/dist/HollowPines-Setup.exe
+            desktop/dist/HollowPines.exe
           make_latest: true

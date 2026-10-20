@@ -90,7 +90,7 @@ export class LocalPlayer {
     const sprint = wantSprint && len > 0;
     const inWater = this.world.inWater(this.pos.x, this.pos.z);
 
-    let speed = this.crouch ? 1.7 : sprint ? 6.4 : 3.4;
+    let speed = (this.crouch ? 1.7 : sprint ? 6.4 : 3.4) * (1 + 0.08 * (this.upg.boots || 0));
     if (this.carryMass > 0) speed *= 1 - clamp(this.carryMass / (this.strength * 3.2), 0, 0.5);
     if (inWater) speed *= 0.55;
     if (opts.speedMul) speed *= opts.speedMul;
@@ -150,13 +150,16 @@ export class LocalPlayer {
       this.noise = Math.max(this.noise, this.crouch ? 0.04 : sprint ? 0.5 : 0.16);
       if (inWater) this.noise = Math.max(this.noise, 0.4);
     }
+    this.noise *= 1 - 0.25 * (this.upg.shoes || 0);
 
     // Taschenlampe
     if (inp.hit('KeyF')) { this.flashOn = !this.flashOn; this.audio.flashlightClick(); }
     if (this.world.inVanZone(this.pos.x, this.pos.z, 2)) this.battery = Math.min(100, this.battery + 25 * dt);
     else if (this.flashOn) this.battery = Math.max(0, this.battery - dt * 100 / (150 + this.upg.battery * 75));
     if (this.battery <= 0) this.flashOn = false;
-    let fi = this.flashOn ? 60 : 0;
+    const fl = this.upg.flashlight || 0;
+    this.flash.distance = 34 + fl * 10;
+    let fi = this.flashOn ? 60 + fl * 30 : 0;
     if (this.flashOn && this.battery < 15 && Math.random() < 0.08) fi *= Math.random() * 0.3;
     if (this.flashOn && opts.flicker && Math.random() < 0.25) fi *= Math.random() * 0.2;
     this.flash.intensity = fi;

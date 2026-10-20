@@ -318,6 +318,177 @@ export class AudioSys {
     cr.connect(hp); hp.connect(cg); cg.connect(out);
     this._stopLater([n, cr], 1.8);
   }
+  /** Polenböller: 5× so stark – tiefer Sub-Wumms, langes Grollen, Splitter-Knistern, Echo im Wald. */
+  bigBoom(pos) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = this.t;
+    const out = this._out(pos, 20, 400);
+    const ws = c.createWaveShaper(); ws.curve = this.distCurve; ws.connect(out);
+    const n = this._noise(this.brown); const lp = this._filter('lowpass', 1400);
+    const g = this._env(2.2, 0.004, 3.2); n.connect(lp); lp.connect(g); g.connect(ws);
+    const o = c.createOscillator(); o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(22, t + 2);
+    const og = this._env(2.0, 0.004, 2.2); o.connect(og); og.connect(out); o.start(t); o.stop(t + 2.4);
+    const cr = this._noise(); const hp = this._filter('highpass', 2000); const cg = this._env(1.2, 0.002, 0.5);
+    cr.connect(hp); hp.connect(cg); cg.connect(out);
+    const nodes = [n, cr];
+    // Splitter / Nachknistern
+    for (let i = 0; i < 14; i++) {
+      const s = this._noise(); const bp = this._filter('bandpass', rand(1500, 5000), 4);
+      const sg = this._env(rand(0.15, 0.4), 0.002, rand(0.02, 0.07), t + 0.3 + i * rand(0.04, 0.12));
+      s.connect(bp); bp.connect(sg); sg.connect(out); nodes.push(s);
+    }
+    // Echo vom Waldrand
+    const e = this._noise(this.brown); const elp = this._filter('lowpass', 500);
+    const eg = this._env(0.6, 0.15, 2.0, t + 0.9); e.connect(elp); elp.connect(eg); eg.connect(this.sfx); nodes.push(e);
+    this._stopLater(nodes, 3.6);
+  }
+
+  /** Tag geschafft: kleine Sieger-Fanfare (Arpeggio + Akkord + Glitzer). */
+  dayComplete() {
+    if (!this.ctx) return;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((f, i) => { this.tone(f, f, 0.18, 0.16, 'square', i * 0.11); this.tone(f / 2, f / 2, 0.18, 0.1, 'triangle', i * 0.11); });
+    const d = notes.length * 0.11 + 0.05;
+    [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f) => { this.tone(f, f * 1.003, 1.4, 0.07, 'triangle', d); this.tone(f * 1.005, f, 1.4, 0.04, 'sawtooth', d); });
+    this.tone(130.8, 130.8, 1.5, 0.22, 'sine', d);
+    for (let i = 0; i < 10; i++) { const f = rand(2000, 4200); this.tone(f, f * 1.2, 0.08, 0.05, 'sine', d + 0.1 + i * 0.09); }
+  }
+
+  /** Van startet und fährt weg: Anlasser, Motor brummt auf, Gangwechsel, Kies, Hupe, verklingt in der Ferne. */
+  vanDriveAway() {
+    if (!this.ctx) return;
+    const c = this.ctx, t = this.t, nodes = [];
+    // Anlasser
+    for (let i = 0; i < 5; i++) this.tone(140, 110, 0.09, 0.18, 'square', i * 0.12);
+    const t0 = t + 0.7, len = 6;
+    // Motor
+    const lp = this._filter('lowpass', 500, 2);
+    const mg = c.createGain();
+    mg.gain.setValueAtTime(0.0001, t0); mg.gain.exponentialRampToValueAtTime(0.6, t0 + 0.2);
+    mg.gain.setValueAtTime(0.6, t0 + 2.2); mg.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    lp.frequency.setValueAtTime(500, t0); lp.frequency.linearRampToValueAtTime(1200, t0 + 1.8); lp.frequency.linearRampToValueAtTime(260, t0 + len);
+    [1, 2.01].forEach((m) => {
+      const o = c.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(38 * m, t0); o.frequency.linearRampToValueAtTime(90 * m, t0 + 1.6);   // 1. Gang hochdrehen
+      o.frequency.linearRampToValueAtTime(58 * m, t0 + 1.9);                                           // Gangwechsel
+      o.frequency.linearRampToValueAtTime(95 * m, t0 + 3.6);
+      o.frequency.linearRampToValueAtTime(70 * m, t0 + len);                                           // Doppler: entfernt sich
+      o.connect(lp); o.start(t0); o.stop(t0 + len + 0.1); nodes.push(o);
+    });
+    lp.connect(mg); mg.connect(this.sfx);
+    // Reifen auf Kies
+    const n = this._noise(); const bp = this._filter('bandpass', 900, 0.8);
+    const ng = c.createGain(); ng.gain.setValueAtTime(0.0001, t0); ng.gain.exponentialRampToValueAtTime(0.35, t0 + 0.3); ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 4.5);
+    n.connect(bp); bp.connect(ng); ng.connect(this.sfx); nodes.push(n);
+    // Hupe 2×
+    [0, 0.32].forEach((d) => { this.tone(392, 392, 0.22, 0.12, 'square', 0.75 + 2.4 + d); this.tone(494, 494, 0.22, 0.1, 'square', 0.75 + 2.4 + d); });
+    this._stopLater(nodes, len + 1);
+  }
+
+  radarBeep(near) { this.tone(near ? 1600 : 1200, near ? 1600 : 1200, 0.06, 0.09, 'square'); }
+
+  /** Lockere Motel-Shop-Musik (prozedural, Endlosschleife), Look-Ahead-Sequencer. */
+  startShopMusic() {
+    if (!this.ctx || this._music) return;
+    const c = this.ctx;
+    const bus = c.createGain(); bus.gain.setValueAtTime(0.0001, this.t); bus.gain.exponentialRampToValueAtTime(0.5, this.t + 1.2);
+    bus.connect(this.comp);
+    const bpm = 108, step = 60 / bpm / 4;
+    // C – Am – F – G (je 1 Takt), Melodie in C-Dur-Pentatonik
+    const chords = [[261.6, 329.6, 392.0], [220.0, 261.6, 329.6], [174.6, 220.0, 261.6], [196.0, 246.9, 293.7]];
+    const bass = [65.4, 55.0, 87.3, 98.0];
+    const scale = [523.3, 587.3, 659.3, 784.0, 880.0, 1046.5];
+    const mel = [0, -1, 2, -1, 3, 2, -1, 1, 4, -1, 3, -1, 2, 1, 0, -1, 2, -1, 4, 3, -1, 5, 4, -1, 3, -1, 2, -1, 1, -1, 0, -1];
+    const m = this._music = { bus, step: 0, next: this.t + 0.1 };
+    const note = (f, at, dur, vol, type, dest = bus) => {
+      const o = c.createOscillator(); o.type = type; o.frequency.value = f;
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(g); g.connect(dest); o.start(at); o.stop(at + dur + 0.05);
+    };
+    const hat = (at, vol) => {
+      const s = c.createBufferSource(); s.buffer = this.white; const hp = this._filter('highpass', 7000);
+      const g = c.createGain(); g.gain.setValueAtTime(vol, at); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.04);
+      s.connect(hp); hp.connect(g); g.connect(bus); s.start(at, Math.random()); s.stop(at + 0.06);
+    };
+    const tick = () => {
+      if (this._music !== m) return;
+      while (m.next < this.t + 0.25) {
+        const s = m.step, bar = Math.floor(s / 16) % 4, i = s % 16, at = m.next;
+        if (i % 4 === 0) note(bass[bar], at, step * 3, 0.35, 'triangle');
+        if (i === 10) note(bass[bar] * 1.5, at, step * 2, 0.22, 'triangle');
+        if (i % 8 === 4) chords[bar].forEach((f) => note(f, at, step * 3, 0.06, 'square'));
+        if (i % 2 === 0) hat(at, i % 4 === 2 ? 0.08 : 0.04);
+        const k = mel[s % 32];
+        if (k >= 0 && s % 64 >= 16) note(scale[k], at, step * 1.8, 0.07, 'triangle');
+        m.step++; m.next += step;
+      }
+    };
+    tick();
+    m.timer = setInterval(tick, 60);
+  }
+  stopShopMusic() {
+    const m = this._music; if (!m) return;
+    this._music = null;
+    clearInterval(m.timer);
+    m.bus.gain.setTargetAtTime(0.0001, this.t, 0.3);
+    setTimeout(() => { try { m.bus.disconnect(); } catch (e) {} }, 1500);
+  }
+
+  /** Party-Musik aus dem Van (positional): Four-on-the-floor-Kick, Offbeat-Bass, Saw-Akkorde.
+   *  Draußen dumpf durch die Wände, im Laderaum (setPartyInside) voll und klar. */
+  startPartyMusic(pos) {
+    if (!this.ctx || this._party) return;
+    const c = this.ctx;
+    const pan = this._panner(pos, 2.5, 60); pan.rolloffFactor = 1.8;
+    const lp = this._filter('lowpass', 700, 0.8); lp.connect(pan);
+    const bus = c.createGain(); bus.gain.setValueAtTime(0.0001, this.t); bus.gain.exponentialRampToValueAtTime(0.32, this.t + 2); bus.connect(lp);
+    const bpm = 126, step = 60 / bpm / 4;
+    const roots = [55.0, 43.65, 65.41, 49.0];                              // A – F – C – G
+    const chords = [[220, 261.6, 329.6], [174.6, 220, 261.6], [261.6, 329.6, 392], [196, 246.9, 293.7]];
+    const lead = [440, 0, 523.3, 0, 659.3, 523.3, 0, 440, 392, 0, 440, 0, 523.3, 0, 587.3, 0];
+    const p = this._party = { bus, lp, pan, step: 0, next: this.t + 0.1 };
+    const osc = (f, at, dur, vol, type, f2) => {
+      const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, at);
+      if (f2) o.frequency.exponentialRampToValueAtTime(f2, at + dur);
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(g); g.connect(bus); o.start(at); o.stop(at + dur + 0.05);
+    };
+    const noise = (at, dur, vol, f, type = 'highpass') => {
+      const s = c.createBufferSource(); s.buffer = this.white; const fl = this._filter(type, f);
+      const g = c.createGain(); g.gain.setValueAtTime(vol, at); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      s.connect(fl); fl.connect(g); g.connect(bus); s.start(at, Math.random()); s.stop(at + dur + 0.02);
+    };
+    const tick = () => {
+      if (this._party !== p) return;
+      while (p.next < this.t + 0.25) {
+        const s = p.step, bar = Math.floor(s / 16) % 4, i = s % 16, at = p.next, drop = (s % 128) >= 32;
+        if (i % 4 === 0) osc(150, at, 0.28, 1.0, 'sine', 40);                         // Kick
+        if (i % 4 === 2) osc(roots[bar] * 2, at, step * 1.6, 0.5, 'sawtooth');        // Offbeat-Bass
+        if (i % 2 === 1) noise(at, 0.03, 0.18, 8000);                                 // Hi-Hat
+        if (i === 4 || i === 12) noise(at, 0.15, 0.4, 1800, 'bandpass');             // Clap
+        if (drop && (i === 0 || i === 6 || i === 10)) chords[bar].forEach((f) => osc(f, at, step * 2.5, 0.07, 'sawtooth'));
+        if (drop && lead[i]) osc(lead[i] * 2, at, step * 0.9, 0.05, 'square');
+        p.step++; p.next += step;
+      }
+    };
+    tick();
+    p.timer = setInterval(tick, 60);
+    this.setPartyInside(false);
+  }
+  setPartyInside(inside) {
+    const p = this._party; if (!p || p.inside === inside) return;
+    p.inside = inside;
+    p.lp.frequency.setTargetAtTime(inside ? 16000 : 700, this.t, 0.15);
+    p.pan.rolloffFactor = inside ? 0.6 : 1.8;
+  }
+  stopPartyMusic() {
+    const p = this._party; if (!p) return;
+    this._party = null;
+    clearInterval(p.timer);
+    p.bus.gain.setTargetAtTime(0.0001, this.t, 0.2);
+    setTimeout(() => { try { p.bus.disconnect(); p.lp.disconnect(); p.pan.disconnect(); } catch (e) {} }, 1200);
+  }
+
   fuse(pos) {
     if (!this.ctx) return;
     const n = this._noise(); const hp = this._filter('highpass', 4000);

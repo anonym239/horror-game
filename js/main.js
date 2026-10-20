@@ -41,6 +41,7 @@ class App {
     this.room = null;           // eigener/beigetretener Raum: {code, name, max, priv}
     this.lobby = new Lobby();
     this.menuT = 0;
+    this._fwd = new THREE.Vector3();
     this.story = new Story(this);
     this.boot();
   }
@@ -89,8 +90,9 @@ class App {
     addEventListener('pointerdown', goFull, true);
     addEventListener('keydown', (e) => { if (e.code !== 'Escape' && e.code !== 'F11') goFull(); }, true);
 
-    $('btnSolo').onclick = () => this.startSolo();
-    $('btnMulti').onclick = () => this.openBrowser();
+    // Beim ersten Spielen läuft zuerst die Story (ohne Überspringen), danach nie wieder automatisch
+    $('btnSolo').onclick = () => this._storyFirst(() => this.startSolo());
+    $('btnMulti').onclick = () => this._storyFirst(() => this.openBrowser());
     $('btnStory').onclick = () => this.playStory('menu');
     $('btnStoryLobby').onclick = () => this.playStory('lobby');
     $('btnBrBack').onclick = () => this.ui.screen('menu');
@@ -208,13 +210,17 @@ class App {
   }
 
   // ---------------- Spielmodi ----------------
-  playStory(back, then) {
+  playStory(back, then, forced = false) {
     this.audio.init();
     this.ui.screen(null);
     this.story.play(() => {
       if (then) then();
       else if (!this.game) this.ui.screen(back);
-    });
+    }, forced);
+  }
+
+  _storyFirst(go) {
+    if (Story.seen()) go(); else this.playStory('menu', go, true);
   }
 
   async startSolo() {
@@ -423,7 +429,7 @@ class App {
       this._menuCam(dt);
       this.world.update(dt, this.engine.time, this.engine.camera.position);
       if (this.audio.ctx) {
-        const f = new THREE.Vector3(0, 0, -1).applyQuaternion(this.engine.camera.quaternion);
+        const f = this._fwd.set(0, 0, -1).applyQuaternion(this.engine.camera.quaternion);
         this.audio.setListener(this.engine.camera.position, f);
       }
     }

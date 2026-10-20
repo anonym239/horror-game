@@ -210,14 +210,21 @@ export function outhouse(b, x, z, rot, base) {
 
 export function van(b, x, z, rot, base) {
   b.setFrame(x, base, z, rot);
-  // Fahrgestell & Kasten (Front zeigt lokal +z)
-  b.box('white', 0, 0.55, -0.6, 2.1, 1.9, 3.6, { tex: 2.2 });
+  // Fahrgestell & begehbarer Laderaum (Front zeigt lokal +z) – Safe-Zone mit Party-Lights
+  b.box('metal', 0, 0.45, -0.6, 2.1, 0.1, 3.6);                          // Boden (Oberkante 0.55)
+  b.box('white', 0, 2.4, -0.6, 2.1, 0.1, 3.6, { tex: 2.2 });             // Dach
+  b.box('white', -1.0, 0.55, -0.6, 0.1, 1.85, 3.6, { tex: 2.2 });        // linke Wand
+  b.box('white', 0, 0.55, -2.35, 2.1, 1.85, 0.1, { tex: 2.2 });          // Hecktür
+  b.box('white', 0, 0.55, 1.15, 2.1, 1.85, 0.1, { tex: 2.2 });           // Trennwand zum Fahrerhaus
+  b.box('white', 1.0, 0.55, -1.9, 0.1, 1.85, 1.0, { tex: 2.2 });         // rechte Wand hinten
+  b.box('white', 1.0, 0.55, 0.7, 0.1, 1.85, 1.0, { tex: 2.2 });          // rechte Wand vorn (dazwischen offene Schiebetür)
+  b.box('metal', 1.3, 0, -0.6, 0.45, 0.28, 1.2);                         // Trittstufe zur Tür
   b.box('white', 0, 0.55, 1.65, 2.1, 1.2, 1.0, { tex: 2.2 });
   b.box('white', 0, 1.75, 1.35, 2.1, 0.7, 0.4, { rx: 0.5, collide: false, tex: 2.2 });
   b.collider(0, 1.75, 1.3, 2.1, 0.7, 0.6);
   b.box('glass', 0, 1.78, 1.5, 1.95, 0.55, 0.05, { rx: 0.5, collide: false });
   for (const s of [-1, 1]) b.box('glass', s * 1.06, 1.6, 1.1, 0.03, 0.55, 0.8, { collide: false });
-  b.box('metal', 0, 0.3, -0.4, 2.15, 0.3, 4.9, { collide: false });
+  b.box('metal', 0, 0.3, -0.4, 2.15, 0.15, 4.9, { collide: false });
   for (const sz of [-1.7, 1.4]) for (const sx of [-1, 1]) b.cyl('tire', sx * 0.98, 0.42, sz, 0.42, 0.42, 0.3, 12, { rz: Math.PI / 2 });
   for (const s of [-1, 1]) {
     b.box('glowHead', s * 0.75, 0.95, 2.16, 0.32, 0.18, 0.03, { collide: false });
@@ -225,8 +232,7 @@ export function van(b, x, z, rot, base) {
   }
   b.box('metal', 0, 0.55, 2.18, 2.2, 0.22, 0.12, { collide: false });
   // offene Schiebetür: Ladezone rechts (+x)
-  b.box('glass', 1.07, 0.75, -0.6, 0.02, 1.5, 1.6, { collide: false });
-  b.box('white', 1.2, 0.55, -1.9, 0.08, 1.85, 1.0, { collide: false, tex: 2.2 });
+  b.box('white', 1.12, 0.55, -1.9, 0.06, 1.85, 1.0, { collide: false, tex: 2.2 }); // aufgeschobene Tür
   // Markierung der Abgabezone
   const zx = 3.4, zz = -0.6, zw = 3.2, zd = 4.2;
   for (const s of [-1, 1]) {

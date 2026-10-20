@@ -66,8 +66,13 @@ export class Story {
     }, 38);
   }
 
-  play(onDone) {
+  /** Wurde die Story schon einmal komplett gesehen? */
+  static seen() { try { return localStorage.getItem('hp_story_seen') === '1'; } catch (e) { return false; } }
+
+  /** forced: erstes Spielen → kein Überspringen möglich */
+  play(onDone, forced = false) {
     if (this.active) return;
+    this.forced = forced;
     const app = this.app, eng = app.engine, cam = eng.camera, a = app.audio;
     a.init();
     a.startAmbience(1);
@@ -84,8 +89,9 @@ export class Story {
     el.classList.remove('hidden');
     $('storySub').textContent = ''; $('storyCard').textContent = '';
     $('storySms').classList.add('hidden'); $('storyPaper').classList.add('hidden'); $('storyTitle').classList.add('hidden');
-    this._skip = (e) => { if (e.type === 'click' || e.code === 'Space' || e.code === 'Escape' || e.code === 'Enter') this.finish(); };
-    $('btnSkipStory').onclick = () => this.finish();
+    this._skip = (e) => { if (this.forced) return; if (e.type === 'click' || e.code === 'Space' || e.code === 'Escape' || e.code === 'Enter') this.finish(); };
+    $('btnSkipStory').onclick = () => { if (!this.forced) this.finish(); };
+    $('btnSkipStory').classList.toggle('hidden', forced);
     addEventListener('keydown', this._skip);
     this._next();
     this._v = new THREE.Vector3(); this._l = new THREE.Vector3();
@@ -151,7 +157,7 @@ export class Story {
 
   finish() {
     if (!this.active) return;
-    this.active = false;
+    this.active = false; this.forced = false;
     clearInterval(this._typeT);
     removeEventListener('keydown', this._skip);
     if (this.fig) { this.fig.dispose(this.app.engine.scene); this.fig = null; }

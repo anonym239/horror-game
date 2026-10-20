@@ -347,6 +347,14 @@ export class MonsterAI {
     if (goal && speed > 0) this._move(dt, goal, speed);
   }
 
+  /** Druckwelle (Polenböller): Monster im Radius fliehen und sind kurz benommen. */
+  blast(x, z, r) {
+    if (Math.hypot(x - this.pos.x, z - this.pos.z) > r) return false;
+    this._retreat();
+    this.activeIn = 6;
+    return true;
+  }
+
   _retreat() {
     this.state = 'retreat'; this.retreatT = 14;
     const a = this.rnd() * Math.PI * 2;

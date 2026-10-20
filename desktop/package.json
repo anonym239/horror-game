@@ -1,7 +1,7 @@
 {
   "name": "hollow-pines",
   "productName": "Hollow Pines",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Koop-Horror im Wald – 1 bis 4 Spieler",
   "main": "main.js",
   "author": "anonym239",
@@ -9,7 +9,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win nsis portable"
   },
   "devDependencies": {
     "electron": "33.2.1",
@@ -18,7 +18,6 @@
   "build": {
     "appId": "com.anonym239.hollowpines",
     "productName": "Hollow Pines",
-    "artifactName": "HollowPines.exe",
     "directories": { "output": "dist" },
     "files": ["main.js", "icon.png", "package.json"],
     "extraResources": [
@@ -28,7 +27,20 @@
         "filter": ["index.html", "style.css", "js/**/*", "vendor/**/*"]
       }
     ],
-    "win": { "target": "portable", "icon": "icon.png" },
-    "portable": { "unicode": true }
+    "win": { "target": ["nsis", "portable"], "icon": "icon.png" },
+    "nsis": {
+      "artifactName": "HollowPines-Setup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hollow Pines",
+      "runAfterFinish": true,
+      "installerLanguages": ["de_DE"],
+      "language": "1031",
+      "unicode": true
+    },
+    "portable": { "artifactName": "HollowPines.exe", "unicode": true }
   }
 }

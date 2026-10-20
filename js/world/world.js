@@ -486,6 +486,7 @@ export class World {
     this.vanLight.position.set(this.van.x, vy + 1.0, this.van.z + 2.3);
     this.vanLight.target.position.set(this.van.x, vy, this.van.z + 30);
     this.group.add(this.vanLight, this.vanLight.target);
+    this._partyLights(vy);
     // Glut-Partikel
     const n = 24, pg = new THREE.BufferGeometry();
     this.embers = new Float32Array(n * 3);
@@ -495,6 +496,58 @@ export class World {
     this.emberPts.frustumCulled = false;
     this.group.add(this.emberPts);
     void sc;
+  }
+
+  /** Party-Lights am Van: Lichterkette auf dem Dach, Unterboden-Neon und ein Farb-Punktlicht.
+   *  Die Lichter existieren immer (konstante Lichtanzahl → keine Shader-Neukompilierung), sind aber nur im Spiel an. */
+  _partyLights(vy) {
+    const v = this.van, c = Math.cos(v.rot), s = Math.sin(v.rot);
+    const W = (lx, ly, lz) => new THREE.Vector3(v.x + lx * c + lz * s, vy + ly, v.z - lx * s + lz * c);
+    const pts = [];
+    for (let i = 0; i <= 9; i++) { const lz = -2.35 + i * 0.38; pts.push(W(-1.08, 2.56, lz), W(1.08, 2.56, lz)); }
+    for (let i = 1; i < 5; i++) { const lx = -1.08 + i * 0.432; pts.push(W(lx, 2.56, -2.4), W(lx, 2.56, 1.2)); }
+    // Lichterkette innen unter der Decke (Safe-Zone)
+    for (let i = 0; i <= 7; i++) { const lz = -2.2 + i * 0.45; pts.push(W(-0.88, 2.33, lz), W(0.88, 2.33, lz)); }
+    // Rahmen der Schiebetür
+    for (let i = 0; i <= 6; i++) { const y = 0.6 + i * 0.29; pts.push(W(1.07, y, -1.42), W(1.07, y, 0.22)); }
+    const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.04, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), pts.length);
+    const m = new THREE.Matrix4();
+    pts.forEach((p, i) => { m.makeTranslation(p.x, p.y, p.z); bulbs.setMatrixAt(i, m); bulbs.setColorAt(i, new THREE.Color(0x222222)); });
+    bulbs.frustumCulled = false;
+    // Unterboden-Neon: flache, leuchtende Fläche unter dem Van
+    const glowGeo = new THREE.PlaneGeometry(2.6, 5.4); glowGeo.rotateX(-Math.PI / 2);
+    const under = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    under.position.copy(W(0, 0.06, -0.4)); under.rotation.y = v.rot;
+    const light = new THREE.PointLight(0xff00ff, 0, 9, 2);
+    light.position.copy(W(0.3, 1.1, -0.6)); // im Laderaum, scheint durch die offene Tür nach draußen
+    this.group.add(bulbs, under, light);
+    this.party = { on: false, bulbs, under, light, n: pts.length, col: new THREE.Color() };
+    this.setParty(false);
+  }
+
+  setParty(on) {
+    const P = this.party; if (!P) return;
+    P.on = on;
+    P.bulbs.visible = on; P.under.visible = on;
+    if (!on) P.light.intensity = 0;
+  }
+
+  _updateParty(t) {
+    const P = this.party; if (!P || !P.on) return;
+    const beat = Math.floor(t * 4);   // Wechsel 4× pro Sekunde
+    for (let i = 0; i < P.n; i++) {
+      const h = ((i * 0.13 + t * 0.35) % 1);
+      const blink = ((i + beat) % 3) !== 0 ? 1 : 0.15;
+      P.col.setHSL(h, 1, 0.5 * blink);
+      P.bulbs.setColorAt(i, P.col);
+    }
+    P.bulbs.instanceColor.needsUpdate = true;
+    const hue = (t * 0.25) % 1;
+    P.col.setHSL(hue, 1, 0.5);
+    P.light.color.copy(P.col);
+    P.light.intensity = 0.6 + 0.6 * Math.max(0, Math.sin(t * Math.PI * 4));
+    P.under.material.color.setHSL((hue + 0.5) % 1, 1, 0.5);
+    P.under.material.opacity = 0.35 + 0.15 * Math.sin(t * 6);
   }
 
   _fireflies(rnd) {
@@ -538,6 +591,14 @@ export class World {
     this.playerSpawns = [0, 1, 2, 3].map((i) => ({ x: vz.x - 1 + (i % 2) * 2, z: vz.z + 3.5 + Math.floor(i / 2) * 1.5 }));
   }
 
+  /** Im Laderaum des Vans (Safe-Zone: Monster sehen und hören dich dort nicht). */
+  inSafeZone(x, z) {
+    const v = this.van, c = Math.cos(v.rot), s = Math.sin(v.rot);
+    const dx = x - v.x, dz = z - v.z;
+    const lx = dx * c - dz * s, lz = dx * s + dz * c;
+    return Math.abs(lx) < 1.0 && lz > -2.3 && lz < 1.1;
+  }
+
   inVanZone(x, z, margin = 0) {
     const v = this.vanZone;
     const dx = x - v.x, dz = z - v.z, c = Math.cos(v.rot), s = Math.sin(v.rot);
@@ -559,6 +620,7 @@ export class World {
   update(dt, t, camPos) {
     this.sky.position.copy(camPos);
     this.fireLight.intensity = 3.2 + Math.sin(t * 13) * 0.5 + Math.sin(t * 7.3) * 0.6 + Math.random() * 0.4;
+    this._updateParty(t);
     // Glut
     const cf = this.clearing, by = this.fireLight.position.y - 0.4;
     for (let i = 0; i < this.emberSeeds.length; i++) {
