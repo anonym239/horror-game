@@ -39,38 +39,16 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Release veröffentlichen
-        uses: softprops/action-gh-release@v2
+      - name: Dateien für das Release ablegen
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ env.TAG }}
-          target_commitish: ${{ github.sha }}
-          name: Hollow Pines ${{ env.TAG }}
-          body: |
-            🌲 **Hollow Pines** – Koop-Horror für 1–4 Spieler.
-
-            ### Download (Windows)
-            - **`HollowPines-Setup.exe`** – Installer: wählt einen Ordner, legt Desktop- und Startmenü-Verknüpfung an, deinstallierbar über „Apps“.
-            - **`HollowPines.exe`** – portable Version, ohne Installation (Doppelklick genügt).
-
-            ### Download (Android)
-            - **`HollowPines.apk`** – auf dem Handy herunterladen und antippen. Beim ersten Mal „Installation aus unbekannten Quellen“ für den Browser erlauben. Neue Versionen meldet die App selbst.
-
-            Falls Windows warnt („Der Computer wurde durch Windows geschützt“): *Weitere Informationen* → *Trotzdem ausführen*.
-
-            ### Neu in dieser Version
-            - Keine Browser-Abfragen mehr: alle Fragen (Überspringen, Löschen, Passwort …) erscheinen im Spiel, der Vollbildmodus bleibt
-            - 📱 Handy (App & Website): Knöpfe im Menü lassen sich wieder antippen
-            - 📱 Touch-Steuerung aufgeräumt: Gadget-Knöpfe nur, wenn man das Gadget hat; Van-Knöpfe nur am Van; kompakteres HUD
-            - 🖥 Menü passt ohne Scrollen auf den Bildschirm (Knöpfe zweispaltig)
-            - Fehler behoben: „NACHT X“-Einblendung und Blackjack-Karten wurden falsch angezeigt
-          files: |
+          name: windows
+          path: |
             desktop/dist/HollowPines-Setup.exe
             desktop/dist/HollowPines.exe
-          make_latest: true
 
   build-android:
     runs-on: ubuntu-latest
-    needs: build-windows   # nacheinander, damit beide dasselbe Release füllen
     env:
       TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
     steps:
@@ -123,8 +101,51 @@ jobs:
           $BT/apksigner sign --ks $KS --ks-type PKCS12 --ks-pass env:KS_PASS --ks-key-alias hollowpines --out HollowPines.apk aligned.apk
           $BT/apksigner verify --print-certs HollowPines.apk
 
-      - name: APK zum Release hinzufügen
+      - name: APK für das Release ablegen
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: HollowPines.apk
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-android]   # erst wenn beides fertig ist – ein einziger Release-Vorgang
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - run: ls -la dist
+
+      - name: Release veröffentlichen
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
-          files: HollowPines.apk
+          target_commitish: ${{ github.sha }}
+          name: Hollow Pines ${{ env.TAG }}
+          body: |
+            🌲 **Hollow Pines** – Koop-Horror für 1–4 Spieler.
+
+            ### Download (Windows)
+            - **`HollowPines-Setup.exe`** – Installer: wählt einen Ordner, legt Desktop- und Startmenü-Verknüpfung an, deinstallierbar über „Apps“.
+            - **`HollowPines.exe`** – portable Version, ohne Installation (Doppelklick genügt).
+
+            ### Download (Android)
+            - **`HollowPines.apk`** – auf dem Handy herunterladen und antippen. Beim ersten Mal „Installation aus unbekannten Quellen“ für den Browser erlauben. Neue Versionen meldet die App selbst.
+
+            Falls Windows warnt („Der Computer wurde durch Windows geschützt“): *Weitere Informationen* → *Trotzdem ausführen*.
+
+            ### Neu in dieser Version
+            - Keine Browser-Abfragen mehr: alle Fragen (Überspringen, Löschen, Passwort …) erscheinen im Spiel, der Vollbildmodus bleibt
+            - 📱 Handy (App & Website): Knöpfe im Menü lassen sich wieder antippen
+            - 📱 Touch-Steuerung aufgeräumt: Gadget-Knöpfe nur, wenn man das Gadget hat; Van-Knöpfe nur am Van; kompakteres HUD
+            - 🖥 Menü passt ohne Scrollen auf den Bildschirm (Knöpfe zweispaltig)
+            - Fehler behoben: „NACHT X“-Einblendung und Blackjack-Karten wurden falsch angezeigt
+          files: |
+            dist/HollowPines-Setup.exe
+            dist/HollowPines.exe
+            dist/HollowPines.apk
+          make_latest: true
