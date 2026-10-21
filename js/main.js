@@ -5,12 +5,16 @@ import { Input } from './engine/input.js';
 import { AudioSys } from './engine/audio.js';
 import { World } from './world/world.js';
 import { UI, $, esc } from './ui/ui.js';
-import { Net, makeRoomCode } from './game/net.js';
+import { makeRoomCode } from './game/net.js';
+import { HybridNet } from './game/relaynet.js';
 import { RoomNet } from './game/roomnet.js';
 import { Lobby } from './game/lobby.js';
 import { Game } from './game/game.js';
 import { PLAYER_CSS } from './game/avatar.js';
 import { Story } from './story.js';
+import { checkForUpdate } from './updater.js';
+import { TouchControls } from './engine/touch.js';
+import { GodMode } from './game/godmode.js';
 import { Editor } from './editor/editor.js';
 import { Saves, describeSave, AUTO_ID } from './game/saves.js';
 import { Scenarios, sanitizeScenario, templates } from './game/scenario.js';
@@ -70,6 +74,10 @@ class App {
     $('loading').style.opacity = '0';
     setTimeout(() => { $('loading').classList.remove('show'); this.ui.screen('menu'); }, 600);
     this.editor = new Editor(this);
+    this.touch = new TouchControls(this);
+    this.god = new GodMode(this);
+    checkForUpdate();
+    $('btnUpdateLater').onclick = () => $('updateBar').classList.add('hidden');
     this._bindUI();
     this._renderStats();
     this.refreshMapLists();
@@ -160,6 +168,13 @@ class App {
     $('btnLeaveLobby').onclick = () => this.exitToMenu();
     $('btnStart').onclick = () => this.startHosted();
     $('btnNextNight').onclick = () => this.game && this.game.nextNight();
+    $('btnCasino').onclick = () => this.game && this.game.enterCasino();
+    $('btnSkipNight').onclick = () => { if (this.game && confirm(`Crane ${this.game.skipPrice()} $ zahlen und Nacht ${this.game.night + 1} überspringen?`)) this.game.skipNight(); };
+    $('btnCasClose').onclick = () => this.game && this.game.casino.close();
+    $('btnCasResume').onclick = () => { this.ui.modal('casinoMenu', false); this.input.lock(); };
+    $('btnCasShop').onclick = () => this.game && this.game.exitCasino();
+    $('btnCasNext').onclick = () => { if (this.game) { this.ui.modal('casinoMenu', false); this.game.nextNight(); } };
+    $('btnCasSettings').onclick = () => { this.ui.modal('casinoMenu', false); this.openSettings(); };
     $('btnToMenu').onclick = () => this.exitToMenu();
     $('btnRetry').onclick = () => this.game && this.game.retry();
     $('btnResume').onclick = () => { this.ui.modal('pause', false); this.input.lock(); };
@@ -292,6 +307,7 @@ class App {
   }
 
   _maybeResume() {
+    if (this.game && this.game.inCasino) { this.ui.modal('casinoMenu', true); return; }
     if (this.game && this.game.phase === 'play') { this.ui.modal('pause', true); this.game.renderPause(); }
   }
 
@@ -384,7 +400,7 @@ class App {
     // Als claude.ai-Artifact: WebRTC ist dort gesperrt → Plattform-"room" nutzen
     let room = null;
     if (IN_ARTIFACT) { try { room = await window.claude.use('room'); } catch (e) { room = null; } }
-    const net = room ? new RoomNet(room) : new Net();
+    const net = room ? new RoomNet(room) : new HybridNet();
     this.net = net;
     net.on('msg', (m, from) => {
       if (this.net !== net) return;
@@ -395,6 +411,7 @@ class App {
     net.on('voice', (id, stream) => this.audio.addVoice(id, stream));
     net.on('voiceEnd', (id) => this.audio.removeVoice(id));
     net.on('error', (e) => console.warn('Netz:', e));
+    net.on('relay', () => this.ui.toast('🛰 Direkte Verbindung blockiert (VPN/Firewall?) – du spielst über das Relay. Voice-Chat ist dabei aus.', '#6ad1ff', 5));
     return net;
   }
 
@@ -568,7 +585,7 @@ class App {
     if (this.net) { const n = this.net; this.net = null; n.destroy(); }
     this.room = null; this.lobbyPlayers = [];
     for (const id of [...this.audio.voices.keys()]) this.audio.removeVoice(id);
-    ['pause', 'shop', 'gameover', 'endcard', 'settings', 'controls', 'saves'].forEach((m) => this.ui.modal(m, false));
+    ['pause', 'shop', 'gameover', 'endcard', 'settings', 'controls', 'saves', 'casinoUI', 'casinoMenu', 'godPanel'].forEach((m) => this.ui.modal(m, false));
     this.input.unlock();
     this.ui.hud(false);
     this.setWorld(null);
@@ -605,6 +622,8 @@ class App {
       }
     }
     this.audio.update(dt);
+    if (this.touch) this.touch.update();
+    if (this.god) this.god.update(dt);
     const ml = (this.audio.micLevel * 100).toFixed(0) + '%';
     if (this.ui.isModal('settings')) $('setMic').style.width = ml;
     if ($('lobby').classList.contains('show')) $('lobbyMic').style.width = ml;

@@ -1,0 +1,12 @@
+{
+  "appId": "com.anonym239.hollowpines",
+  "appName": "Hollow Pines",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#040506"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

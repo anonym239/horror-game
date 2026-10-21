@@ -4,6 +4,8 @@
 const rand = (a, b) => a + Math.random() * (b - a);
 // Party-Musik im Van: Lautstärke im Laderaum / draußen und Dämpfung (Tiefpass) draußen
 const PARTY_VOL_IN = 1.0, PARTY_VOL_OUT = 0.7, PARTY_LP_OUT = 1400;
+// Proximity-Voice-Chat: bis VOICE_NEAR Meter volle Lautstärke, ab VOICE_RANGE Meter stumm
+const VOICE_NEAR = 2.5, VOICE_RANGE = 32;
 const PARTY_STATIONS = ['Party FM', 'Synthwave 87', 'Radio Hollow Pines (Spieluhr)', 'Aus'];
 
 export class AudioSys {
@@ -499,6 +501,51 @@ export class AudioSys {
     p.bus.gain.setTargetAtTime(inside ? PARTY_VOL_IN : PARTY_VOL_OUT, this.t, 0.2);
     p.pan.rolloffFactor = inside ? 0.4 : 1.2;
   }
+  /** Casino-Lounge: Swing mit Walking-Bass, Jazz-Akkorden, Besen-Becken und Vibraphon. */
+  startCasinoMusic() {
+    if (!this.ctx || this._casino) return;
+    const c = this.ctx;
+    const bus = c.createGain(); bus.gain.setValueAtTime(0.0001, this.t); bus.gain.exponentialRampToValueAtTime(0.55, this.t + 1.5);
+    bus.connect(this.comp);
+    const beat = 60 / 116;
+    // ii-V-I-VI in F: Gm7 – C7 – Fmaj7 – D7
+    const chords = [[196, 233.1, 293.7, 349.2], [196, 261.6, 329.6, 466.2], [220, 261.6, 329.6, 349.2], [185, 261.6, 293.7, 370]];
+    const walk = [[98, 110, 116.5, 123.5], [130.8, 123.5, 116.5, 110], [87.3, 98, 110, 130.8], [146.8, 130.8, 123.5, 110]];
+    const vib = [698.5, 0, 784, 880, 0, 784, 698.5, 0, 587.3, 0, 659.3, 698.5, 0, 880, 784, 0];
+    const m = this._casino = { bus, step: 0, next: this.t + 0.1 };
+    const note = (f, at, dur, vol, type) => {
+      const o = c.createOscillator(); o.type = type; o.frequency.value = f;
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(g); g.connect(bus); o.start(at); o.stop(at + dur + 0.05);
+    };
+    const brush = (at, vol, len) => {
+      const s = c.createBufferSource(); s.buffer = this.white; const f = this._filter('highpass', 6000);
+      const g = c.createGain(); g.gain.setValueAtTime(vol, at); g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      s.connect(f); f.connect(g); g.connect(bus); s.start(at, Math.random()); s.stop(at + len + 0.02);
+    };
+    const tick = () => {
+      if (this._casino !== m) return;
+      while (m.next < this.t + 0.3) {
+        const s = m.step, bar = Math.floor(s / 4) % 4, b = s % 4, at = m.next;
+        note(walk[bar][b], at, beat * 0.9, 0.32, 'triangle');                                   // Walking-Bass
+        if (b === 1 || b === 3) chords[bar].forEach((f) => note(f, at, beat * 0.5, 0.045, 'sine')); // Comping
+        brush(at, b % 2 ? 0.07 : 0.04, 0.12); brush(at + beat * 0.66, 0.035, 0.06);              // Swing-Becken
+        const v = vib[(s * 2) % 16]; if (v && s % 8 >= 4) note(v, at, beat * 1.4, 0.06, 'sine');
+        const v2 = vib[(s * 2 + 1) % 16]; if (v2 && s % 8 >= 4) note(v2, at + beat * 0.66, beat, 0.05, 'sine');
+        m.step++; m.next += beat;
+      }
+    };
+    tick();
+    m.timer = setInterval(tick, 80);
+  }
+  stopCasinoMusic() {
+    const m = this._casino; if (!m) return;
+    this._casino = null;
+    clearInterval(m.timer);
+    m.bus.gain.setTargetAtTime(0.0001, this.t, 0.3);
+    setTimeout(() => { try { m.bus.disconnect(); } catch (e) {} }, 1500);
+  }
+
   /** Van-Radio (R): wechselt den Sender und gibt dessen Namen zurück. */
   nextPartyStation() {
     this._partyStation = ((this._partyStation || 0) + 1) % PARTY_STATIONS.length;
@@ -625,21 +672,36 @@ export class AudioSys {
     this.removeVoice(id);
     const el = new Audio(); el.srcObject = stream; el.muted = true; el.play().catch(() => {});
     const src = this.ctx.createMediaStreamSource(stream);
-    const g = this.ctx.createGain(); g.gain.value = 1;
+    const g = this.ctx.createGain(); g.gain.value = 1; // Lobby: voll hörbar, im Spiel regelt setVoice
+    // Tiefpass: dumpf hinter Wänden und auf Entfernung (wie in Horror-Spielen)
+    const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 16000; lp.Q.value = 0.5;
     const p = this.ctx.createPanner();
-    p.panningModel = this.hq ? 'HRTF' : 'equalpower'; p.distanceModel = 'inverse';
-    p.refDistance = 2.5; p.maxDistance = 40; p.rolloffFactor = 1.6;
+    p.panningModel = this.hq ? 'HRTF' : 'equalpower'; p.distanceModel = 'linear';
+    p.refDistance = 1; p.maxDistance = 1e4; p.rolloffFactor = 0; // nur Richtung – Lautstärke regelt setVoice
     const an = this.ctx.createAnalyser(); an.fftSize = 512;
-    src.connect(g); g.connect(p); p.connect(this.voiceBus); src.connect(an);
-    const v = { el, src, g, p, an, buf: new Float32Array(512), level: 0 };
+    src.connect(g); g.connect(lp); lp.connect(p); p.connect(this.voiceBus); src.connect(an);
+    const v = { el, src, g, lp, p, an, buf: new Float32Array(512), level: 0 };
     this.voices.set(id, v);
     return v;
   }
-  setVoice(id, pos, gain) {
+  /** Proximity-Voice: pos = Mund des Sprechers, dist = Abstand zum Hörer, opts.wall = Wand dazwischen,
+   *  opts.full = überall voll hörbar (Lobby/Shop/Zuschauer). */
+  setVoice(id, pos, dist, opts = {}) {
     const v = this.voices.get(id); if (!v) return;
     if (v.p.positionX) { v.p.positionX.value = pos.x; v.p.positionY.value = pos.y; v.p.positionZ.value = pos.z; }
     else v.p.setPosition(pos.x, pos.y, pos.z);
-    v.g.gain.setTargetAtTime(gain, this.t, 0.1);
+    const R = VOICE_RANGE;
+    let gain, cut;
+    if (opts.full) { gain = 1; cut = 16000; }
+    else if (opts.off) { gain = 0; cut = 16000; }
+    else {
+      const k = Math.min(1, Math.max(0, (dist - VOICE_NEAR) / (R - VOICE_NEAR)));
+      gain = Math.pow(1 - k, 1.6) * 1.25;           // bis 2,5 m voll, bei ~32 m stumm
+      cut = 16000 - k * 12500;                       // weiter weg = weniger Höhen
+      if (opts.wall) { gain *= 0.45; cut = Math.min(cut, 900); }
+    }
+    v.g.gain.setTargetAtTime(gain, this.t, 0.12);
+    v.lp.frequency.setTargetAtTime(cut, this.t, 0.15);
   }
   removeVoice(id) {
     const v = this.voices.get(id); if (!v) return;

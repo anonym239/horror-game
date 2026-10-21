@@ -25,6 +25,10 @@ export const SHOP = [
   { k: 'flashlight', day: 5, ico: '🔦', name: 'Profi-Taschenlampe', desc: 'Heller und größere Reichweite.', max: 2, price: (l) => 260 + l * 200 },
   { k: 'goldscan', day: 6, ico: '🧭', name: 'Schatzsucher', desc: 'Scanner hebt wertvolle Beute (150 $+) golden hervor.', max: 1, price: () => 300, requires: 'scanner' },
   { k: 'polenBox', day: 6, ico: '🧨', name: 'Polenböller ×3', desc: 'Sparpack für den großen Knall (V).', max: 99, price: () => 380, consumable: true, add: 3, store: 'polen' },
+  { k: 'teleport', day: 4, ico: '🌀', name: 'Van-Teleporter', desc: 'K: beamt dich sofort zurück zum Van – samt Beute. 1× pro Nacht pro Stufe.', max: 2, price: (l) => [900, 1500][l], premium: true },
+  { k: 'cloak', day: 5, ico: '🫥', name: 'Tarnumhang', desc: 'U: 12 s unsichtbar – kein Monster sieht dich.', max: 99, price: () => 350, consumable: true, add: 1, store: 'cloak' },
+  { k: 'jetpack', day: 6, ico: '🚀', name: 'Jetpack', desc: 'Leertaste in der Luft halten: fliegen! Kostet Ausdauer.', max: 1, price: () => 2800, premium: true },
+  { k: 'goldvan', day: 7, ico: '👑', name: 'Goldener Van', desc: '+25 % Geld auf jede abgelieferte Beute. Für echte Profis.', max: 1, price: () => 6000, premium: true },
   { k: 'quota', day: 7, ico: '💼', name: 'Crane schmieren', desc: 'Die Quote jeder Nacht sinkt um 10 % pro Stufe.', max: 2, price: (l) => 500 + l * 400 },
 ];
 

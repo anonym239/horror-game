@@ -56,7 +56,8 @@
         <p class="warn">Sie hören euch. Auch über das Mikrofon.</p>
       </div>
     </div>
-    <div class="version">HollowEngine · WebGL2 · <span id="gpuInfo"></span></div>
+    <div class="version">HollowEngine · WebGL2 · <span id="gpuInfo"></span> · <span id="versionInfo"></span></div>
+    <div id="updateBar" class="update-bar hidden"><span id="updateText"></span><button class="btn small primary" id="btnUpdate">Jetzt aktualisieren</button><button class="btn small ghost" id="btnUpdateLater">Später</button><small id="updateHint" class="hint"></small></div>
   </div>
 
   <!-- Server-Browser -->
@@ -194,7 +195,7 @@
     </div>
     <div class="hud-br">
       <div class="money"><span id="hudMoney">0</span> $</div>
-      <div class="boeller">🧨 <span id="hudBoeller">0</span> &nbsp; 💥 <span id="hudPolen">0</span> &nbsp; 💉 <span id="hudAdren">0</span></div>
+      <div class="boeller">🧨 <span id="hudBoeller">0</span> &nbsp; 💥 <span id="hudPolen">0</span> &nbsp; 💉 <span id="hudAdren">0</span> &nbsp; 🫥 <span id="hudCloak">0</span></div>
       <div id="hudXray" class="scan"></div>
       <div id="hudRadar" class="scan"></div>
       <div id="hudScan" class="scan">Q Scanner</div>
@@ -236,7 +237,9 @@
       <div id="shopDay" class="shop-day"></div>
       <div id="shopSms" class="shop-sms"></div>
       <div id="shopItems" class="shop-items"></div>
-      <div class="row-end">
+      <div class="row-end shop-actions">
+        <button class="btn casino-btn" id="btnCasino">🎰 Ins Casino</button>
+        <button class="btn" id="btnSkipNight">⏩ Nacht überspringen</button>
         <span id="shopWait" class="hint"></span>
         <button class="btn primary" id="btnNextNight">Nächste Nacht ▶</button>
       </div>
@@ -336,6 +339,32 @@
   </div>
 
   <div id="clickToPlay" class="click-to-play hidden">Klicken zum Spielen</div>
+  <div id="cloakFx" class="cloak-fx"></div>
+
+  <!-- Casino -->
+  <div id="casinoHud" class="casino-hud hidden">
+    <div class="ch-top">🎰 HOLLOW PINES ROYALE · Kasse: <b><span id="casinoMoney">0</span> $</b></div>
+    <div id="casinoPrompt" class="ch-prompt"></div>
+    <div class="ch-cross"></div>
+    <div class="ch-hint">Esc = Menü · zum grünen Ausgang = zurück in den Shop</div>
+  </div>
+  <div id="casinoUI" class="modal casino-modal">
+    <div class="panel casino-panel">
+      <div class="cas-head"><h2 id="casinoTitle">Casino</h2><button class="btn small ghost" id="btnCasClose">✕ Aufstehen</button></div>
+      <div id="casinoBody"></div>
+    </div>
+  </div>
+  <div id="casinoMenu" class="modal">
+    <div class="panel">
+      <h2>🎰 Casino</h2>
+      <div class="menu-buttons">
+        <button class="btn primary" id="btnCasResume">Weiter zocken</button>
+        <button class="btn" id="btnCasShop">Zurück zum Shop</button>
+        <button class="btn" id="btnCasNext">Nächste Nacht starten ▶</button>
+        <button class="btn ghost" id="btnCasSettings">Einstellungen</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="js/main.js"></script>
 </body>

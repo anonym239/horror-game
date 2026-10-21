@@ -13,6 +13,8 @@ import { EasterEggs } from './eastereggs.js';
 import { craneMessage, tapeLore } from '../story.js';
 import { scenarioPlan } from './scenario.js';
 import { Saves } from './saves.js';
+import { Casino } from './casino.js';
+import { applyTroll } from './godmode.js';
 
 export const NIGHT_LEN = 360;
 const SNAP_DT = 1 / 15, STATE_DT = 1 / 20;
@@ -33,7 +35,7 @@ export class Game {
     this.phase = 'wait';
     this.night = 0; this.quota = 0; this.banked = 0; this.money = 0; this.timeLeft = NIGHT_LEN;
     this.upg = UPG_DEFAULT();
-    this.boellers = 2; this.polen = 0; this.adren = 0;
+    this.boellers = 2; this.polen = 0; this.adren = 0; this.cloak = 0;
     this.xrayT = 0; this.xrayCd = 0; this.adrenT = 0; this.hornCd = 0;
     this.nightLen = NIGHT_LEN; this._radarT = 0;
     this.event = null;
@@ -67,6 +69,9 @@ export class Game {
       this.physics.onPreStep = () => this._applyHolds();
     }
     this.scares = new Scares(this);
+    this.casino = new Casino(this);
+    this.inCasino = false;
+    this.cloak = 0; this.cloakT = 0; this.tpUsed = 0;
     this.eggs = new EasterEggs(this);
     this.tapesHeard = 0;
     this.input.onLockChange = (locked) => this._onLock(locked);
@@ -142,7 +147,7 @@ export class Game {
       case 'st': {
         if (!this.isHost) return;
         const r = this.players.get(from); if (!r) return;
-        r.tPos.set(m.p[0], m.p[1], m.p[2]); r.yaw = m.y; r.pitch = m.pi; r.crouch = !!m.c; r.flash = !!m.f; r.loud = m.l || 0;
+        r.tPos.set(m.p[0], m.p[1], m.p[2]); r.yaw = m.y; r.pitch = m.pi; r.crouch = !!m.c; r.flash = !!m.f; r.loud = m.l || 0; r.casino = !!m.cas;
         r.holdTarget = m.h ? (r.holdTarget || new THREE.Vector3()).set(m.h[0], m.h[1], m.h[2]) : null;
         return;
       }
@@ -152,12 +157,15 @@ export class Game {
       case 'boeller': if (this.isHost) this._hostBoeller(m.p, m.v, m.k === 'polen' ? 'polen' : 'boeller'); return;
       case 'buy': if (this.isHost) this._hostBuy(m.k); return;
       case 'adren': if (this.isHost) this._hostAdren(from); return;
+      case 'cloak': if (this.isHost) this._hostCloak(from); return;
+      case 'cas': if (this.isHost) this._hostCasino(from, m); return;
+      case 'casr': if (m.invalid) { this.casino.busy = false; this.money = m.money; this.audio.denied(); return; } this.casino.onResult(m, m.id === this.myId); this._refreshShopMoney(); return;
       case 'horn': if (this.isHost) this._hostHorn(from); return;
       case 'leave': if (this.isHost && this._allInVan()) this.endNight('leave'); return;
       case 'resync': {
         if (!this.isHost || this.phase !== 'play') return;
         const items = [...this.items.values()].filter((it) => !it.def.tool).map((it) => [it.id, it.type, it.value, it.body.position.x, it.body.position.y, it.body.position.z]);
-        this.net.send(from, { t: 'night', n: this.night, quota: this.quota, event: this.event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, nightLen: this.nightLen, stats: this.stats, banked: this.banked, timeLeft: this.timeLeft });
+        this.net.send(from, { t: 'night', n: this.night, quota: this.quota, event: this.event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, cloak: this.cloak, nightLen: this.nightLen, stats: this.stats, banked: this.banked, timeLeft: this.timeLeft });
         return;
       }
 
@@ -189,6 +197,10 @@ export class Game {
           this.audio.tone(140, 60, 1.0, 0.3, 'sawtooth', 0.05, _v.clone());
         } else if (m.k === 'snag' && m.id === this.myId) {
           this.ui.toast('Losgelassen – hängen geblieben!', '#ff8a4a', 1.4);
+        } else if (m.k === 'troll') {
+          if (m.id === this.myId) applyTroll(this, m);
+        } else if (m.k === 'cloak') {
+          if (m.id === this.myId) { this.cloakT = 12; this.audio.xray(); this.ui.toast('🫥 TARNUMHANG – 12 s unsichtbar für alle Monster', '#8ad0ff', 2.5); document.body.classList.add('cloaked'); }
         } else if (m.k === 'adren' && m.id === this.myId) {
           this._startAdren();
         } else if (m.k === 'horn') {
@@ -211,7 +223,7 @@ export class Game {
 
   _onSnap(m) {
     for (const s of m.p) {
-      const [id, x, y, z, yaw, pitch, c, f, a, inv, sel] = s;
+      const [id, x, y, z, yaw, pitch, c, f, a, inv, sel, cas] = s;
       const r = this.players.get(id); if (!r) continue;
       if (r.isLocal) {
         if (!a && this.local.alive && !this.scare) { this.local.alive = false; }
@@ -219,7 +231,7 @@ export class Game {
         if (inv && inv.join() !== r.inv.join()) { r.inv = inv.slice(); r.sel = sel; }
         continue;
       }
-      r.tPos.set(x, y, z); r.yaw = yaw; r.pitch = pitch; r.crouch = !!c; r.flash = !!f; r.alive = !!a; if (inv) { r.inv = inv; r.sel = sel; }
+      r.tPos.set(x, y, z); r.yaw = yaw; r.pitch = pitch; r.crouch = !!c; r.flash = !!f; r.alive = !!a; r.casino = !!cas; if (inv) { r.inv = inv; r.sel = sel; }
       if (r.pos.y < -40) r.pos.copy(r.tPos);
     }
     const seen = new Set();
@@ -241,7 +253,7 @@ export class Game {
     }
     const g = m.g;
     if (g[5] && g[5] !== this.night && performance.now() - (this._resyncAt || 0) > 2000) { this._resyncAt = performance.now(); this.net.toHost({ t: 'resync' }); }
-    this.timeLeft = g[0]; this.banked = g[1]; this.quota = g[2]; this.money = g[3]; this.boellers = g[4]; this.polen = g[6] || 0; this.adren = g[7] || 0;
+    this.timeLeft = g[0]; this.banked = g[1]; this.quota = g[2]; this.money = g[3]; this.boellers = g[4]; this.polen = g[6] || 0; this.adren = g[7] || 0; this.cloak = g[8] || 0;
   }
 
   _sendSnapshot() {
@@ -257,10 +269,10 @@ export class Game {
     }
     this.net.broadcast({
       t: 'snap',
-      p: this.roster.map((r) => [r.id, r2(r.pos.x), r2(r.pos.y), r2(r.pos.z), r2(r.yaw), r2(r.pitch), r.crouch ? 1 : 0, r.flash ? 1 : 0, r.alive ? 1 : 0, r.inv, r.sel]),
+      p: this.roster.map((r) => [r.id, r2(r.pos.x), r2(r.pos.y), r2(r.pos.z), r2(r.yaw), r2(r.pitch), r.crouch ? 1 : 0, r.flash ? 1 : 0, r.alive ? 1 : 0, r.inv, r.sel, r.casino ? 1 : 0]),
       m: [...this.monsters.values()].map((mo) => mo.ai.snapshot()),
       i: items,
-      g: [Math.round(this.timeLeft), this.banked, this.quota, this.money, this.boellers, this.night, this.polen, this.adren],
+      g: [Math.round(this.timeLeft), this.banked, this.quota, this.money, this.boellers, this.night, this.polen, this.adren, this.cloak],
     });
   }
 
@@ -268,12 +280,12 @@ export class Game {
   startNight(n, fresh = false) {
     const R = this.scn ? this.scn.rules : null;
     if (fresh) {
-      this.money = R ? R.startMoney : 0; this.upg = UPG_DEFAULT(); this.boellers = R ? R.startBoeller : 2; this.polen = 0; this.adren = 0;
+      this.money = R ? R.startMoney : 0; this.upg = UPG_DEFAULT(); this.boellers = R ? R.startBoeller : 2; this.polen = 0; this.adren = 0; this.cloak = 0;
       this.stats = { loot: 0, deaths: 0, nights: 0, best: null };
     }
     const rnd = mulberry32(this.seed + n * 977 + Math.floor(Math.random() * 1e6));
     const np = this.players.size;
-    const quota = Math.round(((200 + 190 * (n - 1) + 45 * (n - 1) ** 2) * (1 + 0.45 * (np - 1)) * (1 - 0.1 * level(this.upg, 'quota')) * (R ? R.quotaMul : 1)) / 10) * 10;
+    const quota = this._quotaFor(n);
     const nightLen = (R ? R.nightLen : NIGHT_LEN) + 45 * level(this.upg, 'overtime');
     let event = null;
     if (n >= 2 && (!R || R.events) && rnd() < 0.3) event = rnd() < 0.5 ? 'bloodmoon' : 'fog';
@@ -292,10 +304,17 @@ export class Game {
       const v = Math.round((d.val[0] + (d.val[1] - d.val[0]) * rnd()) * valueMul);
       items.push([this.nextItemId++, type, v, s.x, s.y + 0.25, s.z]);
     }
-    this.emit({ t: 'night', n, quota, event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, nightLen, stats: this.stats });
+    this.emit({ t: 'night', n, quota, event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, cloak: this.cloak, nightLen, stats: this.stats });
     this._spawnMonsters(n, event, rnd);
     this.autosave();
   }
+
+  _quotaFor(n) {
+    const R = this.scn ? this.scn.rules : null, np = this.players.size;
+    return Math.round(((200 + 190 * (n - 1) + 45 * (n - 1) ** 2) * (1 + 0.45 * (np - 1)) * (1 - 0.1 * level(this.upg, 'quota')) * (R ? R.quotaMul : 1)) / 10) * 10;
+  }
+  /** Preis, um die nächste Nacht zu überspringen (Crane auszahlen): 1,5 × die Quote der nächsten Nacht */
+  skipPrice() { return Math.round(this._quotaFor(this.night + 1) * 1.5 / 10) * 10; }
 
   /** Monster einer Nacht erzeugen (nur Host-KI). */
   _spawnMonsters(n, event, rnd, delay = 25) {
@@ -328,7 +347,7 @@ export class Game {
     const won = this.phase === 'end' && this._lastEnd && this._lastEnd.success;
     if (this.phase !== 'play' && this.phase !== 'shop' && !won) return null;
     const d = {
-      v: 1, night: this.night, money: this.money, upg: { ...this.upg }, boellers: this.boellers, polen: this.polen, adren: this.adren,
+      v: 1, night: this.night, money: this.money, upg: { ...this.upg }, boellers: this.boellers, polen: this.polen, adren: this.adren, cloak: this.cloak,
       stats: { ...this.stats }, seed: this.seed, scenario: this.scn, players: this.players.size,
     };
     if (this.phase === 'play') {
@@ -356,20 +375,20 @@ export class Game {
 
   /** Spielstand laden (Host): entweder mitten in der Nacht oder im Shop. */
   _loadSave(d) {
-    this.money = d.money | 0; this.upg = sanitizeUpg(d.upg); this.boellers = d.boellers | 0; this.polen = d.polen | 0; this.adren = d.adren | 0;
+    this.money = d.money | 0; this.upg = sanitizeUpg(d.upg); this.boellers = d.boellers | 0; this.polen = d.polen | 0; this.adren = d.adren | 0; this.cloak = d.cloak | 0;
     this.stats = { loot: 0, deaths: 0, nights: 0, best: null, ...d.stats };
     this.night = Math.max(1, d.night | 0);
     if (d.play) {
       const P = d.play;
       this.nextItemId = 1;
       const items = (P.items || []).map((it, i) => [i + 1, it[1], it[2], it[3], it[4], it[5]]).filter((it) => LOOT[it[1]]);
-      this.emit({ t: 'night', n: this.night, quota: P.quota, event: P.event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, nightLen: P.nightLen, stats: this.stats, banked: P.banked, timeLeft: P.timeLeft });
+      this.emit({ t: 'night', n: this.night, quota: P.quota, event: P.event, items, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, cloak: this.cloak, nightLen: P.nightLen, stats: this.stats, banked: P.banked, timeLeft: P.timeLeft });
       if (P.pos && P.alive !== false) { this.local.pos.set(P.pos[0], P.pos[1] + 0.1, P.pos[2]); this.local.yaw = P.yaw || 0; }
       const rnd = mulberry32(this.seed + this.night * 31 + Math.floor(Math.random() * 1e6));
       this._spawnMonsters(this.night, P.event, rnd, 12);
       this.ui.toast(`💾 Spielstand geladen – Nacht ${this.night}, noch ca. ${Math.max(1, Math.ceil(P.timeLeft / P.nightLen * 6))} Std. bis 4 Uhr`, '#6ad1ff', 3);
     } else {
-      this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren });
+      this.emit({ t: 'shop', n: this.night, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, cloak: this.cloak });
       this.ui.toast(`💾 Spielstand geladen – Shop nach Nacht ${this.night}`, '#6ad1ff', 3);
     }
   }
@@ -382,10 +401,13 @@ export class Game {
   }
 
   _onNight(m) {
+    if (this.inCasino) this.exitCasino(false);
+    this.casino.close();
+    this.tpUsed = 0; this.cloakT = 0; document.body.classList.remove('cloaked');
     this._clearNight();
     this.nightLen = m.nightLen || NIGHT_LEN;
     this.night = m.n; this.quota = m.quota; this.event = m.event; this.banked = m.banked || 0; this.timeLeft = m.timeLeft || this.nightLen;
-    this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0; this.adren = m.adren || 0;
+    this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0; this.adren = m.adren || 0; this.cloak = m.cloak || 0;
     if (m.stats) this.stats = { ...m.stats };
     this.quotaAnnounced = this.banked >= this.quota; this._deadT = 0; this.scanCd = 0; this._autoT = 0;
     this.xrayT = 0; this.xrayCd = 0; this.adrenT = 0; this.hornCd = 0;
@@ -457,7 +479,7 @@ export class Game {
     this.emit({ t: 'end', res });
     setTimeout(() => {
       if (this.disposed) return;
-      if (success) this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren });
+      if (success) this.emit({ t: 'shop', n: this.night, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, cloak: this.cloak });
       else this.emit({ t: 'over', stats: this.stats, night: this.night });
     }, 5500);
   }
@@ -495,16 +517,87 @@ export class Game {
   _onShop(m) {
     const paid = this.phase === 'shop' && m.money < this.money;
     this.phase = 'shop';
-    this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0; this.adren = m.adren || 0;
+    if (m.n) this.night = m.n;
+    this.money = m.money; this.upg = sanitizeUpg(m.upg); this.boellers = m.boellers; this.polen = m.polen || 0; this.adren = m.adren || 0; this.cloak = m.cloak || 0;
     this.ui.modal('endcard', false);
-    this.ui.modal('shop', true);
-    this.ui.shop(this.money, this.upg, { boellers: this.boellers, polen: this.polen, adren: this.adren }, this.night, this.isHost, (k) => this.buy(k));
-    $('shopSms').innerHTML = `📱 <b>Mr. Crane:</b> ${craneMessage(this.night)}`;
+    this._renderShop();
     if (paid) this.audio.cash();
+    if (this.inCasino) return; // im Casino bleiben – nur Daten aktualisieren
+    this.ui.modal('shop', true);
     this.audio.startShopMusic();
     this.input.unlock();
     if (this.isHost) this.autosave();
   }
+
+  _renderShop() {
+    this.ui.shop(this.money, this.upg, { boellers: this.boellers, polen: this.polen, adren: this.adren, cloak: this.cloak }, this.night, this.isHost, (k) => this.buy(k));
+    $('shopSms').innerHTML = `📱 <b>Mr. Crane:</b> ${craneMessage(this.night)}`;
+    const casOpen = this.night >= 2;
+    $('btnCasino').disabled = !casOpen;
+    $('btnCasino').textContent = casOpen ? '🎰 Ins Casino' : '🎰 Casino (ab Tag 2)';
+    const price = this.skipPrice();
+    $('btnSkipNight').classList.toggle('hidden', !this.isHost);
+    $('btnSkipNight').disabled = this.money < price;
+    $('btnSkipNight').textContent = `⏩ Nacht ${this.night + 1} überspringen (${price} $)`;
+  }
+  _refreshShopMoney() { if (this.phase === 'shop' && this.ui.isModal('shop')) this._renderShop(); }
+
+  /** Host: Crane auszahlen und eine Nacht überspringen (zählt als geschafft, schaltet neue Ware frei). */
+  skipNight() {
+    if (!this.isHost || this.phase !== 'shop') return;
+    const price = this.skipPrice();
+    if (this.money < price) { this.audio.denied(); return; }
+    this.money -= price;
+    this.night++;
+    this.stats.nights++;
+    this.audio.dayComplete();
+    this.ui.toast(`⏩ Crane kassiert ${price} $ – Nacht ${this.night} gilt als geschafft. Neue Ware im Shop!`, '#ffd040', 4);
+    this.emit({ t: 'shop', n: this.night, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, cloak: this.cloak });
+  }
+
+  // ======================= Casino =======================
+  enterCasino() {
+    if (this.phase !== 'shop' || this.night < 2 || this.inCasino) return;
+    this.inCasino = true;
+    this.ui.modal('shop', false);
+    this.local.world = this.casino.world;
+    this.local.spawn(0, 9.6);
+    this.local.yaw = 0; this.local.flashOn = false;
+    this.casino.setActive(true);
+    this.engine.scene.fog.density = 0.006;
+    this.audio.stopShopMusic(); this.audio.startCasinoMusic();
+    $('casinoHud').classList.remove('hidden');
+    this.ui.toast('🎰 Willkommen im <b>Hollow Pines Royale</b>! Geh zu einem Tisch und drück <b>E</b>.', '#ffd040', 4);
+    this.input.lock();
+  }
+
+  exitCasino(toShop = true) {
+    if (!this.inCasino) return;
+    this.inCasino = false;
+    this.casino.setActive(false);
+    this.local.world = this.world;
+    this.world.setEvent(this.event);
+    this.audio.stopCasinoMusic();
+    $('casinoHud').classList.add('hidden');
+    this.ui.modal('casinoMenu', false);
+    if (toShop && this.phase === 'shop') { this._renderShop(); this.ui.modal('shop', true); this.audio.startShopMusic(); this.input.unlock(); }
+  }
+
+  /** Einsatz an den Host schicken (oder selbst auswerten, wenn man Host ist) */
+  casinoRequest(m) {
+    if (this.isHost) this._hostCasino(this.myId, m); else this.net.toHost({ t: 'cas', ...m });
+  }
+
+  _hostCasino(pid, m) {
+    if (this.phase !== 'shop' || this.night < 2) return;
+    const r = this.players.get(pid); if (!r) return;
+    const res = this.casino.hostResolve(pid, m, this.money);
+    if (!res) { if (pid === this.myId) { this.casino.busy = false; this.audio.denied(); } else this.net.send(pid, { t: 'casr', id: pid, g: m.g, r: null, bet: 0, win: 0, cost: 0, money: this.money, name: r.name, invalid: 1 }); return; }
+    this.money = this.money - res.cost + res.win;
+    if (this._phaseMsg && this._phaseMsg.t === 'shop') this._phaseMsg = { ...this._phaseMsg, money: this.money }; // wiederholte Shop-Nachricht nicht mit altem Geld
+    this.emit({ t: 'casr', id: pid, g: m.g, r: res.r, bet: res.bet, win: res.win, cost: res.cost, money: this.money, name: r.name });
+  }
+
 
   buy(k) {
     if (this.isHost) this._hostBuy(k); else this.net.toHost({ t: 'buy', k });
@@ -517,7 +610,7 @@ export class Game {
     const it = shopItem(k);
     this.money -= c.price;
     if (it.consumable) this[it.store] += it.add; else this.upg[k] = c.lvl + 1;
-    this.emit({ t: 'shop', money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, bought: k });
+    this.emit({ t: 'shop', n: this.night, money: this.money, upg: this.upg, boellers: this.boellers, polen: this.polen, adren: this.adren, cloak: this.cloak, bought: k });
   }
 
   nextNight() { if (this.isHost && this.phase === 'shop') this.startNight(this.night + 1); }
@@ -714,7 +807,7 @@ export class Game {
         continue;
       }
       if (!it.heldBy && w.inVanZone(b.position.x, b.position.z) && b.position.y < w.height(b.position.x, b.position.z) + 2.2) {
-        it.value = Math.round(it.value * (1 + 0.1 * level(this.upg, 'haggle'))); // Crane-Deal
+        it.value = Math.round(it.value * (1 + 0.1 * level(this.upg, 'haggle')) * (1 + 0.25 * level(this.upg, 'goldvan'))); // Crane-Deal + Goldener Van
         this.banked += it.value; this.money += it.value; this.stats.loot += it.value;
         if (!this.stats.best || it.value > this.stats.best.v) this.stats.best = { name: it.def.name, v: it.value };
         this.emit({ t: 'dep', id: it.id, v: it.value, n: it.def.name, x: b.position.x, y: b.position.y, z: b.position.z });
@@ -740,7 +833,7 @@ export class Game {
 
   // ======================= Tod & Jumpscare =======================
   _hostKill(p, ai) {
-    if (!p.alive || p.safe) return; // Safe-Zone im Van
+    if (!p.alive || p.safe || p.god) return; // Safe-Zone im Van / God-Mode
     p.alive = false;
     this._hostDropAll(p.id);
     this.stats.deaths++;
@@ -833,6 +926,8 @@ export class Game {
     if (inp.hit('KeyV')) this._throwBoeller('polen');
     if (inp.hit('KeyX')) this._useXray();
     if (inp.hit('KeyT')) this._useAdren();
+    if (inp.hit('KeyU')) this._useCloak();
+    if (inp.hit('KeyK')) this._useTeleport();
     if (inp.hit('KeyJ')) this._useHorn();
     if (inp.hit('KeyR') && this.world.inVanZone(p.pos.x, p.pos.z, 3)) {
       const name = this.audio.nextPartyStation();
@@ -974,6 +1069,32 @@ export class Game {
   }
   _setXray(on) { for (const mo of this.monsters.values()) mo.view.setXray(on); }
 
+  /** Tarnumhang (U): 12 s unsichtbar für Monster (Host entscheidet). */
+  _useCloak() {
+    if (this.cloak <= 0) { this.audio.denied(); this.ui.toast('🫥 Kein Tarnumhang – ab Tag 5 im Shop', '#888', 1.4); return; }
+    if (this.cloakT > 0) return;
+    if (this.isHost) this._hostCloak(this.myId); else this.net.toHost({ t: 'cloak' });
+  }
+  _hostCloak(pid) {
+    const r = this.players.get(pid);
+    if (this.cloak <= 0 || !r || !r.alive || this.phase !== 'play') return;
+    this.cloak--; r.cloakT = 12;
+    this.emit({ t: 'ev', k: 'cloak', id: pid });
+  }
+  /** Van-Teleporter (K): sofort zurück zum Van, x-mal pro Nacht je nach Stufe. */
+  _useTeleport() {
+    const lvl = level(this.upg, 'teleport');
+    if (!lvl) { this.audio.denied(); this.ui.toast('🌀 Kein Van-Teleporter – ab Tag 4 im Shop', '#888', 1.4); return; }
+    if (this.tpUsed >= lvl) { this.audio.denied(); this.ui.toast('🌀 Teleporter für diese Nacht leer', '#888', 1.4); return; }
+    this.tpUsed++;
+    const idx = Math.max(0, this.roster.findIndex((r) => r.isLocal));
+    const sp = this.world.playerSpawns[idx % 4];
+    this.local.pos.set(sp.x, this.world.collision.groundAt(sp.x, sp.z) + 0.1, sp.z);
+    this.local.vel.set(0, 0, 0);
+    this.ui.flash(0.8); this.audio.xray();
+    this.ui.toast(`🌀 Teleportiert! (${lvl - this.tpUsed} übrig)`, '#c060ff', 1.8);
+  }
+
   /** Adrenalin-Spritze (T) – Verbrauchsgut, der Host zählt herunter. */
   _useAdren() {
     if (this.adren <= 0) { this.audio.denied(); this.ui.toast('💉 Keine Adrenalin-Spritze – ab Tag 2 im Shop', '#888', 1.4); return; }
@@ -1034,6 +1155,14 @@ export class Game {
 
   // ======================= Update =======================
   _onLock(locked) {
+    if (this.inCasino) {
+      if (!locked && !this.casino.ui && !this.ui.isModal('settings') && !this.ui.isModal('controls')) {
+        this.ui.modal('casinoMenu', true);
+        $('btnCasNext').classList.toggle('hidden', !this.isHost);
+      }
+      if (locked) this.ui.modal('casinoMenu', false);
+      return;
+    }
     if (this.phase === 'play' && !locked && !this.scare && !this.ui.isModal('settings') && !this.ui.isModal('controls')) {
       this.ui.modal('pause', true);
       this.renderPause();
@@ -1050,10 +1179,16 @@ export class Game {
 
     const me = this.players.get(this.myId);
     // Lokaler Spieler
-    if (playing && this.local.alive && !this.scare) {
+    if (this.inCasino) {
+      if (this.input.locked) this.local.update(dt, { speedMul: 1.15 });
+      else this.local.update(0, {});
+      this.local.torch.visible = false; this.local.flash.intensity = 0; // im Casino keine Taschenlampe
+      this.casino.update(dt);
+    } else if (playing && this.local.alive && !this.scare) {
       const adr = this.adrenT > 0;
       if (adr) { this.adrenT -= dt; this.local.stamina = this.local.maxStamina; }
-      this.local.update(dt, { flicker: this.scares.flicker > 0 || this._nearStalker, speedMul: adr ? 1.3 : 1 });
+      if (this.cloakT > 0 && (this.cloakT -= dt) <= 0) { document.body.classList.remove('cloaked'); this.ui.toast('🫥 Tarnumhang vorbei – sie sehen dich wieder!', '#ff8a4a', 2); }
+      this.local.update(dt, { flicker: this.scares.flicker > 0 || this._nearStalker, speedMul: (adr ? 1.3 : 1) * (this.app.god && this.app.god.flags.speed && this.isHost ? 2 : 1) });
       if (this.local.landHurt) { this.engine.fx.hurt = 0.7; this.local.landHurt = 0; }
     } else this.local.update(0, {});
     if (me) {
@@ -1076,6 +1211,7 @@ export class Game {
         r.safe = this.world.inSafeZone(r.pos.x, r.pos.z) && r.pos.y > this.world.height(r.pos.x, r.pos.z) + 0.3;
         r.inVan = r.safe || this.world.inVanZone(r.pos.x, r.pos.z, 3);
         r.hidden = this.world.inHideout(r.pos.x, r.pos.y, r.pos.z); // Camp-Hütte: Monster sehen dich nicht
+        if (r.cloakT > 0) { r.cloakT -= dt; r.hidden = true; } // Tarnumhang
       }
       this._hostItems(dt);
       // Geräusche aus Hütten dringen nur gedämpft nach draußen
@@ -1094,13 +1230,16 @@ export class Game {
       } else this._deadT = 0;
       if (this.phase === 'play' && this.timeLeft <= 0) { this.timeLeft = 0; this.endNight('time'); }
     }
+    // Im Shop/Casino: Positionen der anderen weich nachziehen (für Avatare im Casino)
+    if (this.isHost && !playing) for (const r of this.players.values()) if (!r.isLocal) r.pos.lerp(r.tPos, 1 - Math.exp(-14 * dt));
+    if (me) me.casino = this.inCasino;
     if (this.isHost && this.net && this._phaseMsg && this.phase !== 'play') {
       this._phaseT = (this._phaseT || 0) + dt; // verlorene Nachrichten (room) ausgleichen
       if (this._phaseT > 2) { this._phaseT = 0; this.net.broadcast(this._phaseMsg); }
     }
     if (this.isHost && this.net) {
       this._snapT += dt;
-      if (this._snapT >= SNAP_DT && this.phase === 'play') { this._snapT = 0; this._sendSnapshot(); }
+      if (this._snapT >= SNAP_DT && (this.phase === 'play' || this.phase === 'shop')) { this._snapT = 0; this._sendSnapshot(); }
     }
     // Physik → Mesh (Host) bzw. Interpolation (Client)
     for (const it of this.items.values()) {
@@ -1119,10 +1258,10 @@ export class Game {
         v.setState(v.pos.x + (t.x - v.pos.x) * k, v.pos.y + (t.y - v.pos.y) * k, v.pos.z + (t.z - v.pos.z) * k, angleLerp(v.ry, t.ry, k), t.anim, t.extra);
       }
       this._stateT += dt;
-      if (this._stateT >= STATE_DT && this.phase === 'play') {
+      if (this._stateT >= STATE_DT && (this.phase === 'play' || this.inCasino || this.phase === 'shop')) {
         this._stateT = 0;
         const r2 = (v) => Math.round(v * 100) / 100, p = this.local.pos;
-        this.net.toHost({ t: 'st', p: [r2(p.x), r2(p.y), r2(p.z)], y: r2(this.local.yaw), pi: r2(this.local.pitch), c: this.local.crouch ? 1 : 0, f: me.flash ? 1 : 0, l: r2(me.loud), a: this.local.alive ? 1 : 0, h: me.holdTarget ? [r2(me.holdTarget.x), r2(me.holdTarget.y), r2(me.holdTarget.z)] : 0 });
+        this.net.toHost({ t: 'st', p: [r2(p.x), r2(p.y), r2(p.z)], y: r2(this.local.yaw), pi: r2(this.local.pitch), c: this.local.crouch ? 1 : 0, f: me.flash ? 1 : 0, l: r2(me.loud), a: this.local.alive ? 1 : 0, cas: this.inCasino ? 1 : 0, h: me.holdTarget ? [r2(me.holdTarget.x), r2(me.holdTarget.y), r2(me.holdTarget.z)] : 0 });
       }
     }
     // Avatare & Voice
@@ -1131,9 +1270,20 @@ export class Game {
       if (r.isLocal) continue;
       const voice = this.audio.voices.get(r.id);
       const speaking = voice && voice.level > 0.02;
-      r.avatar.setState({ x: r.pos.x, y: r.pos.y, z: r.pos.z, yaw: r.yaw, pitch: r.pitch, crouch: r.crouch, flash: r.flash, alive: r.alive });
+      // im Casino nur die sehen, die auch im Casino sind (und umgekehrt)
+      const here = this.inCasino ? !!r.casino : !r.casino;
+      r.avatar.setState({ x: r.pos.x, y: r.pos.y, z: r.pos.z, yaw: r.yaw, pitch: r.pitch, crouch: r.crouch, flash: r.flash && !r.casino, alive: r.alive && here });
       r.avatar.update(dt, speaking);
-      if (voice) this.audio.setVoice(r.id, { x: r.pos.x, y: r.pos.y + 1.6, z: r.pos.z }, r.alive ? 1 : (this.local.alive ? 0 : 1));
+      if (voice) {
+        // Proximity-Voice: nah laut, weit weg leise, hinter Wänden dumpf. Tote hören alle, Lebende hören Tote nicht.
+        _v.set(r.pos.x, r.pos.y + 1.6, r.pos.z);
+        const d = cam.position.distanceTo(_v);
+        const together = this.phase === 'play' || (this.inCasino && r.casino);
+        const colW = this.inCasino ? this.casino.col : this.world.collision;
+        if ((voice._losT = (voice._losT || 0) - dt) <= 0) { voice._losT = 0.25; voice._wall = together && d < 34 && !colW.lineOfSight(cam.position, _v); }
+        const lobbyLike = !together && !this.inCasino && !r.casino; // Shop/Ergebnis: alle hören sich normal
+        this.audio.setVoice(r.id, _v, d, { full: lobbyLike || (!this.local.alive && this.phase === 'play'), off: (!r.alive && this.local.alive) || (this.inCasino !== !!r.casino), wall: voice._wall });
+      }
     }
     // Monster-Animation & Gefahr
     let danger = 0; this._nearStalker = false;
@@ -1208,6 +1358,7 @@ export class Game {
     ui.set('hudBoeller', 'text', String(this.boellers));
     ui.set('hudPolen', 'text', String(this.polen));
     ui.set('hudAdren', 'text', String(this.adren));
+    ui.set('hudCloak', 'text', String(this.cloak));
     const xl = level(this.upg, 'xray');
     ui.set('hudXray', 'text', !xl ? '' : this.xrayT > 0 ? `👁️ Geisterblick ${Math.ceil(this.xrayT)}s` : this.xrayCd > 0 ? `👁️ Brille ${Math.ceil(this.xrayCd)}s` : 'X  Geisterblick bereit');
     ui.set('hudXray', 'class:cd', !!xl && this.xrayT <= 0 && this.xrayCd > 0);
@@ -1246,6 +1397,10 @@ export class Game {
     this.engine.scene.remove(this.boomLight);
     this.engine.camera.remove(this.local.flash, this.local.flash.target, this.local.torch);
     this.scares.dispose();
+    if (this.inCasino) this.exitCasino(false);
+    this.casino.dispose();
+    this.audio.stopCasinoMusic();
+    document.body.classList.remove('cloaked');
     this.eggs.dispose();
     clearTimeout(this._fanfareTO);
     this.audio.stopShopMusic(); this.audio.stopPartyMusic();

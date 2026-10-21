@@ -21,6 +21,8 @@ export const ACTIONS = [
   { a: 'polen', name: 'Polenböller werfen', def: 'KeyV' },
   { a: 'xray', name: 'Geisterblick-Brille', def: 'KeyX' },
   { a: 'adren', name: 'Adrenalin-Spritze', def: 'KeyT' },
+  { a: 'cloak', name: 'Tarnumhang', def: 'KeyU' },
+  { a: 'teleport', name: 'Van-Teleporter', def: 'KeyK' },
   { a: 'horn', name: 'Hupe (am Van)', def: 'KeyJ' },
   { a: 'radio', name: 'Van-Radio', def: 'KeyR' },
   { a: 'leave', name: 'Abfahren (halten)', def: 'KeyH' },

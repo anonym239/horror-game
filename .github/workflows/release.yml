@@ -1,4 +1,5 @@
-# Baut die Windows-Version (Setup-Installer + portable .exe) und veröffentlicht sie als GitHub-Release.
+# Baut die Windows-Version (Setup-Installer + portable .exe) und die Android-App (APK)
+# und veröffentlicht alles als GitHub-Release.
 # Auslöser: ein Versions-Tag wie v1.1.0 (git tag v1.1.0 && git push --tags)
 # oder ohne Git: auf GitHub unter "Actions" → "Release (Windows .exe)" → "Run workflow" → Version eintragen.
 name: Release (Windows .exe)
@@ -51,15 +52,80 @@ jobs:
             - **`HollowPines-Setup.exe`** – Installer: wählt einen Ordner, legt Desktop- und Startmenü-Verknüpfung an, deinstallierbar über „Apps“.
             - **`HollowPines.exe`** – portable Version, ohne Installation (Doppelklick genügt).
 
+            ### Download (Android)
+            - **`HollowPines.apk`** – auf dem Handy herunterladen und antippen. Beim ersten Mal „Installation aus unbekannten Quellen“ für den Browser erlauben. Neue Versionen meldet die App selbst.
+
             Falls Windows warnt („Der Computer wurde durch Windows geschützt“): *Weitere Informationen* → *Trotzdem ausführen*.
 
             ### Neu in dieser Version
-            - 🛠 Editor: eigene Karten bauen (18 Objekte, See, Spawn-Punkte), beliebig viele Monster, Van frei gestalten (Farbe, Größe, Ausstattung, Radio), eigene Regeln, 4 Vorlagen, Export/Import
-            - Eigene Karten im Mehrspieler: Host wählt in der Lobby Karte oder Spielstand, Freunde bekommen die Karte automatisch
-            - 💾 Spielstände: speichern, überschreiben, löschen, laden – plus Autosave und Speichern beim Verlassen
-            - Grafik umstellen ohne Spielverlust: nach dem Neuladen geht es genau dort weiter
-            - Tastenbelegung frei anpassbar
+            - 📱 Android-App (HollowPines.apk) mit Touch-Steuerung und automatischer Update-Meldung
+            - 🎰 3D-Casino ab Tag 2 (Spielautomaten, Blackjack, Roulette, Glücksrad, Doppelt oder Nichts) – auch im Mehrspieler
+            - ⏩ Nächte überspringen, neue Gadgets: Van-Teleporter, Tarnumhang, Jetpack, Goldener Van
+            - 🛰 Verbindung von überall: automatisches Relay, wenn VPN/Firewall die direkte Verbindung blockiert
+            - 🎙 Proximity-Voice-Chat: nah laut, weit weg leise, hinter Wänden dumpf
+            - Menü passt jetzt auf jeden Bildschirm
           files: |
             desktop/dist/HollowPines-Setup.exe
             desktop/dist/HollowPines.exe
           make_latest: true
+
+  build-android:
+    runs-on: ubuntu-latest
+    needs: build-windows   # nacheinander, damit beide dasselbe Release füllen
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Capacitor-Projekt anlegen
+        working-directory: mobile
+        run: |
+          npm install --no-audit --no-fund
+          mkdir -p www
+          cp -r ../index.html ../style.css ../js ../vendor www/
+          npx cap add android
+          cp MainActivity.java android/app/src/main/java/com/anonym239/hollowpines/MainActivity.java
+          V="${TAG#v}"; IFS=. read -r MA MI PA <<< "$V"; CODE=$(( MA * 10000 + MI * 100 + ${PA:-0} ))
+          sed -i "s/versionCode 1$/versionCode $CODE/; s/versionName \"1.0\"/versionName \"$V\"/" android/app/build.gradle
+          grep -n "versionCode\|versionName" android/app/build.gradle
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's/<activity /<activity android:screenOrientation="sensorLandscape" /' $M
+          sed -i 's#</manifest>#<uses-permission android:name="android.permission.RECORD_AUDIO" /><uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" /></manifest>#' $M
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            cp ../desktop/icon.png android/app/src/main/res/mipmap-$d/ic_launcher.png
+            cp ../desktop/icon.png android/app/src/main/res/mipmap-$d/ic_launcher_round.png
+          done
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          npx cap sync android
+
+      - name: APK bauen
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: APK signieren
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'hollowpines-2026' }}
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          IN=mobile/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          $BT/zipalign -p -f 4 $IN aligned.apk
+          KS=mobile/hollowpines-release.p12
+          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > ks.p12; KS=ks.p12; fi
+          $BT/apksigner sign --ks $KS --ks-type PKCS12 --ks-pass env:KS_PASS --ks-key-alias hollowpines --out HollowPines.apk aligned.apk
+          $BT/apksigner verify --print-certs HollowPines.apk
+
+      - name: APK zum Release hinzufügen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: HollowPines.apk

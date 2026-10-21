@@ -24,6 +24,11 @@ Im Wald ist etwas, und es hört zu.
 - **Eigene Tastenbelegung**: Steuerung → Taste anklicken → neue Taste drücken (doppelte Belegungen werden getauscht)
 - **Editor** (Hauptmenü → 🛠 Editor): eigene Karten mit Hütten, Lodges, Schuppen, Kapellen, Friedhöfen, Wohnwagen, Zelten, Kisten, Steinkreisen, See, Beute- und Monster-Spawn-Punkten; beliebig viele Monster (bis 40); Van in Farbe, Größe (bis 2,5×), Ausstattung und Radiosender; Regeln (Quote, Nachtlänge, Startgeld, Beute, Nebel, Bäume). Speichern, Export/Import als Datei, 4 Vorlagen, „▶ Testen“
 - **Eigene Karten im Mehrspieler**: in der Lobby wählt der Host Karte oder Spielstand – die Mitspieler bekommen die Karte automatisch
+- **📱 Android-App** (`HollowPines.apk` unter Releases): Touch-Steuerung (Joystick links, rechts wischen zum Umsehen, Aktionsknöpfe), Vollbild-Querformat, meldet neue Versionen selbst
+- **🎰 Casino** ab Tag 2 im Shop: begehbare 3D-Spielhalle mit Spielautomaten, Blackjack, Roulette, Glücksrad und „Doppelt oder Nichts“ – gemeinsame Kasse, fair vom Host ausgewürfelt
+- **⏩ Nächte überspringen** (Crane auszahlen) und neue Gadgets: Van-Teleporter (K), Tarnumhang (U), Jetpack, Goldener Van
+- **🛰 Verbindung von überall**: klappt die direkte WebRTC-Verbindung nicht (VPN, Firewall, Hotspot), verbinden sich Mitspieler automatisch über ein Relay
+- **🎙 Proximity-Voice-Chat**: nah laut, weit weg leise (ab ca. 32 m stumm), hinter Wänden dumpf
 - **Easter Eggs**: ein paar Geheimnisse sind versteckt …
 - **Polenböller** (V): 5× stärkere Explosion, verscheucht Monster im Umkreis
 - **Van als Safe-Zone**: Schiebetür offen, im Laderaum können Monster dich weder sehen noch hören – mit Party-Lights und Party-Musik
@@ -77,5 +82,7 @@ Dann http://localhost:5173 öffnen.
 | T | Adrenalin-Spritze (Shop, ab Tag 2) |
 | J (am Van) | Hupe: lockt alle Monster zum Van |
 | R (am Van) | Van-Radio: Party FM, Synthwave 87, Spieluhr, Aus |
+| U | Tarnumhang (Shop) |
+| K | Van-Teleporter (Shop) |
 | M | Mikrofon stumm |
 | Esc | Pause (Host: Spieler kicken) |

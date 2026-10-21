@@ -27,7 +27,7 @@ export class Input {
     addEventListener('keyup', (e) => { const code = this.translate(e.code); if (code) this.keys.delete(code); });
     addEventListener('blur', () => { this.keys.clear(); this.buttons.clear(); });
     addEventListener('mousemove', (e) => {
-      if (!this.locked) return;
+      if (!this.locked || this.touchMode) return;
       this.mouseDX += e.movementX; this.mouseDY += e.movementY;
     });
     canvas.addEventListener('mousedown', (e) => {
@@ -46,13 +46,17 @@ export class Input {
   /** translate: Funktion physischer Code → Standard-Code (keybinds.buildMap) */
   setBinds(translate) { this.translate = translate; this.keys.clear(); this.pressed.clear(); }
   lock() {
+    if (this.touchMode) { if (!this.locked) { this.locked = true; this.onLockChange && this.onLockChange(true); } return; }
     const plain = () => { try { const q = this.canvas.requestPointerLock(); if (q && q.catch) q.catch(() => {}); } catch (e) { /* nicht erlaubt */ } };
     try {
       const p = this.canvas.requestPointerLock({ unadjustedMovement: true });
       if (p && p.catch) p.catch(plain);
     } catch (e) { plain(); }
   }
-  unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
+  unlock() {
+    if (this.touchMode) { if (this.locked) { this.locked = false; this.keys.clear(); this.onLockChange && this.onLockChange(false); } return; }
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
   down(code) { return this.enabled && this.keys.has(code); }
   hit(code) { return this.enabled && this.pressed.has(code); }
   click(btn) { return this.enabled && this.clicked.has(btn); }

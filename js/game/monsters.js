@@ -240,7 +240,7 @@ export class MonsterAI {
   get radius() { return this.type === 'crawler' ? 0.4 : 0.45; }
 
   /** Kann dieser Spieler überhaupt gejagt werden? Im Van-Laderaum (safe) und in Camp-Hütten (hidden) nicht. */
-  static huntable(p) { return p.alive && !p.inVan && !p.hidden; }
+  static huntable(p) { return p.alive && !p.inVan && !p.hidden && !p.godInvis; }
 
   _pickRoam(players) {
     const w = this.world, r = this.rnd;

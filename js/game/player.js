@@ -114,6 +114,26 @@ export class LocalPlayer {
       this.vel.y = 6.0; this.onGround = false; this.stamina -= 8; this.staminaDelay = 0.6;
       if (this.crouch) this.crouch = false;
     }
+    // God-Mode-Fliegen: Leertaste hoch, C runter, keine Schwerkraft, durch Wände
+    if (this.godFly) {
+      this.crouch = false;
+      const up = inp.down('Space') ? 1 : 0, down = inp.down('KeyC') || inp.down('ControlLeft') ? 1 : 0;
+      this.vel.x = wx * speed * 2.5; this.vel.z = wz * speed * 2.5; this.vel.y = (up - down) * 9;
+      this.pos.x += this.vel.x * dt; this.pos.y += this.vel.y * dt; this.pos.z += this.vel.z * dt;
+      const gr = col.groundAt(this.pos.x, this.pos.z);
+      if (this.pos.y < gr) this.pos.y = gr;
+      this.onGround = false; this.stamina = this.maxStamina;
+      this.cam.position.set(this.pos.x, this.pos.y + this.eye, this.pos.z);
+      this.cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+      return;
+    }
+    // Jetpack (Shop): Leertaste in der Luft halten = Schub nach oben
+    if ((this.upg.jetpack || 0) > 0 && !this.onGround && inp.down('Space') && this.stamina > 1) {
+      this.vel.y = Math.max(this.vel.y, 4.2);
+      this.stamina -= 24 * dt; this.staminaDelay = 0.9;
+      this.noise = Math.max(this.noise, 0.3);
+      this.jetOn = true;
+    } else this.jetOn = false;
     this.vel.y -= 20 * dt;
 
     const prevY = this.pos.y;
