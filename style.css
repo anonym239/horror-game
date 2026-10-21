@@ -474,3 +474,9 @@ html.touch #hud .hud-bc { left: 42%; transform: translateX(-50%) scale(.72); tra
 html.touch #prompt { font-size: 14px; bottom: 30%; max-width: 50vw; }
 html.touch .toast { font-size: 12px; max-width: 46vw; }
 html.touch #toasts { left: 38%; top: 70px; }
+
+/* Spiel-eigener Dialog (statt Browser-Abfragen) */
+.dialog-modal { z-index: 100; }
+.dialog-panel { width: min(440px, 92vw); }
+.dialog-panel p { font-size: 17px; line-height: 1.5; margin: 0 0 14px; color: var(--bone); }
+.dialog-panel input { width: 100%; font-size: 18px; margin-bottom: 14px; box-sizing: border-box; }

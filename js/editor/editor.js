@@ -1,6 +1,6 @@
 // Karten-Editor: Draufsicht auf das Spielfeld. Objekte platzieren/verschieben/drehen,
 // Monster einstellen, Van gestalten, Regeln festlegen, speichern, exportieren und direkt testen.
-import { $, esc } from '../ui/ui.js';
+import { $, esc, ask } from '../ui/ui.js';
 import { MONSTER_INFO } from '../game/monsters.js';
 import {
   OBJECTS, MAX_OBJECTS, MAX_MONSTERS, MONSTER_TYPES, RADIO_STATIONS, MAP_RADIUS,
@@ -39,8 +39,8 @@ export class Editor {
     this._status(this.dirty ? 'Ungespeicherte Änderungen' : '');
   }
 
-  close() {
-    if (this.dirty && !confirm('Ungespeicherte Änderungen verwerfen?')) return;
+  async close() {
+    if (this.dirty && !(await ask('Ungespeicherte Änderungen verwerfen?', { ok: 'Verwerfen' }))) return;
     this.dirty = false;
     this.active = false;
     this.app.ui.screen('menu');
@@ -193,7 +193,7 @@ export class Editor {
     $('edBack').onclick = () => this.close();
     $('edSave').onclick = () => this.save();
     $('edTest').onclick = () => this.test();
-    $('edNew').onclick = () => { if (this.dirty && !confirm('Ungespeicherte Änderungen verwerfen?')) return; this.scn = newScenario(); this.dirty = false; this.sel = null; this._fit(); this._sync(); this._status('Neues Szenario'); };
+    $('edNew').onclick = async () => { if (this.dirty && !(await ask('Ungespeicherte Änderungen verwerfen?', { ok: 'Verwerfen' }))) return; this.scn = newScenario(); this.dirty = false; this.sel = null; this._fit(); this._sync(); this._status('Neues Szenario'); };
     $('edOpen').onclick = () => this._openList();
     $('edOpenClose').onclick = () => this.app.ui.modal('edOpenModal', false);
     $('edExport').onclick = () => this._export();
@@ -341,13 +341,13 @@ export class Editor {
       <div class="sr-btns">${tplRow ? `<button class="btn small primary" data-tpl="${s.id}">Als Vorlage nehmen</button>` : `<button class="btn small primary" data-open="${s.id}">Öffnen</button><button class="btn small" data-copy="${s.id}">Kopie</button><button class="btn small ghost" data-del="${s.id}">Löschen</button>`}</div></div>`;
     $('edList').innerHTML = `<div class="ed-h">Deine Szenarien</div>${mine.length ? mine.map((s) => row(s)).join('') : '<p class="hint">Noch keine gespeichert.</p>'}
       <div class="ed-h">Vorlagen</div>${tpl.map((s) => row(s, true)).join('')}`;
-    $('edList').onclick = (e) => {
+    $('edList').onclick = async (e) => {
       const b = e.target.closest('button'); if (!b) return;
-      const ask = () => !this.dirty || confirm('Ungespeicherte Änderungen verwerfen?');
-      if (b.dataset.open && ask()) { this.scn = clone(Scenarios.get(b.dataset.open)); this.dirty = false; }
-      else if (b.dataset.copy && ask()) { const s = clone(Scenarios.get(b.dataset.copy)); const n = newScenario(); this.scn = { ...s, id: n.id, name: s.name + ' (Kopie)' }; this.dirty = true; }
-      else if (b.dataset.tpl && ask()) { const s = clone(tpl.find((x) => x.id === b.dataset.tpl)); this.scn = { ...s, id: newScenario().id }; this.dirty = true; }
-      else if (b.dataset.del) { if (confirm('Szenario wirklich löschen?')) { Scenarios.remove(b.dataset.del); this._openList(); this.app.refreshMapLists(); } return; }
+      const discard = async () => !this.dirty || ask('Ungespeicherte Änderungen verwerfen?', { ok: 'Verwerfen' });
+      if (b.dataset.open && await discard()) { this.scn = clone(Scenarios.get(b.dataset.open)); this.dirty = false; }
+      else if (b.dataset.copy && await discard()) { const s = clone(Scenarios.get(b.dataset.copy)); const n = newScenario(); this.scn = { ...s, id: n.id, name: s.name + ' (Kopie)' }; this.dirty = true; }
+      else if (b.dataset.tpl && await discard()) { const s = clone(tpl.find((x) => x.id === b.dataset.tpl)); this.scn = { ...s, id: newScenario().id }; this.dirty = true; }
+      else if (b.dataset.del) { if (await ask('Szenario wirklich löschen?', { ok: 'Löschen' })) { Scenarios.remove(b.dataset.del); this._openList(); this.app.refreshMapLists(); } return; }
       else return;
       this.sel = null; this.app.ui.modal('edOpenModal', false); this._fit(); this._sync();
       this._status(this.dirty ? 'Ungespeicherte Änderungen' : 'Geöffnet');
@@ -369,12 +369,12 @@ export class Editor {
   _import(file) {
     if (!file) return;
     const r = new FileReader();
-    r.onload = () => {
+    r.onload = async () => {
       let s = null;
       try { s = sanitizeScenario(JSON.parse(r.result)); } catch (e) { s = null; }
       $('edFile').value = '';
       if (!s) { this._status('Datei ist kein gültiges Szenario', '#ff5a4a'); return; }
-      if (this.dirty && !confirm('Ungespeicherte Änderungen verwerfen?')) return;
+      if (this.dirty && !(await ask('Ungespeicherte Änderungen verwerfen?', { ok: 'Verwerfen' }))) return;
       if (Scenarios.get(s.id)) s.id = newScenario().id; // nichts Bestehendes überschreiben
       this.scn = s; this.dirty = true; this.sel = null; this._fit(); this._sync();
       this._status('Importiert – zum Behalten speichern', '#4ce07a');

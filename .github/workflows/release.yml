@@ -58,6 +58,7 @@ jobs:
             Falls Windows warnt („Der Computer wurde durch Windows geschützt“): *Weitere Informationen* → *Trotzdem ausführen*.
 
             ### Neu in dieser Version
+            - Keine Browser-Abfragen mehr: alle Fragen (Überspringen, Löschen, Passwort …) erscheinen im Spiel, der Vollbildmodus bleibt
             - 📱 Handy (App & Website): Knöpfe im Menü lassen sich wieder antippen
             - 📱 Touch-Steuerung aufgeräumt: Gadget-Knöpfe nur, wenn man das Gadget hat; Van-Knöpfe nur am Van; kompakteres HUD
             - 🖥 Menü passt ohne Scrollen auf den Bildschirm (Knöpfe zweispaltig)

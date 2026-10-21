@@ -1,6 +1,6 @@
 {
   "name": "hollow-pines-mobile",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
   "description": "Android-Version (APK) von Hollow Pines – wird auf GitHub Actions gebaut",
   "devDependencies": {

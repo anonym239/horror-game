@@ -194,3 +194,37 @@ export class UI {
 }
 
 export function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+/**
+ * Spiel-eigener Dialog statt confirm()/prompt() des Browsers – verlässt den Vollbildmodus nicht.
+ * ask('Text?') → Promise<boolean>; ask('Name:', { input: 'Vorgabe' }) → Promise<string|null>;
+ * opts.password = Eingabe verdeckt, opts.ok / opts.cancel = Beschriftungen.
+ */
+export function ask(text, opts = {}) {
+  let m = document.getElementById('dialog');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'dialog'; m.className = 'modal dialog-modal';
+    m.innerHTML = '<div class="panel dialog-panel"><p id="dlgText"></p><input id="dlgInput" spellcheck="false" autocomplete="off" /><div class="row-end"><button class="btn ghost" id="dlgNo"></button><button class="btn primary" id="dlgYes"></button></div></div>';
+    document.body.appendChild(m);
+  }
+  const inp = document.getElementById('dlgInput'), withInput = opts.input !== undefined || opts.password;
+  document.getElementById('dlgText').textContent = text;
+  inp.classList.toggle('hidden', !withInput);
+  inp.type = opts.password ? 'password' : 'text';
+  inp.value = opts.input || '';
+  document.getElementById('dlgYes').textContent = opts.ok || 'OK';
+  document.getElementById('dlgNo').textContent = opts.cancel || 'Abbrechen';
+  m.classList.add('show');
+  if (withInput) setTimeout(() => inp.focus(), 30);
+  return new Promise((resolve) => {
+    const done = (yes) => {
+      m.classList.remove('show');
+      document.getElementById('dlgYes').onclick = document.getElementById('dlgNo').onclick = inp.onkeydown = null;
+      resolve(withInput ? (yes ? inp.value : null) : yes);
+    };
+    document.getElementById('dlgYes').onclick = () => done(true);
+    document.getElementById('dlgNo').onclick = () => done(false);
+    inp.onkeydown = (e) => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
+  });
+}

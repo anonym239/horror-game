@@ -4,7 +4,7 @@ import { Engine, detectQuality, PRESETS } from './engine/renderer.js';
 import { Input } from './engine/input.js';
 import { AudioSys } from './engine/audio.js';
 import { World } from './world/world.js';
-import { UI, $, esc } from './ui/ui.js';
+import { UI, $, esc, ask } from './ui/ui.js';
 import { makeRoomCode } from './game/net.js';
 import { HybridNet } from './game/relaynet.js';
 import { RoomNet } from './game/roomnet.js';
@@ -169,7 +169,7 @@ class App {
     $('btnStart').onclick = () => this.startHosted();
     $('btnNextNight').onclick = () => this.game && this.game.nextNight();
     $('btnCasino').onclick = () => this.game && this.game.enterCasino();
-    $('btnSkipNight').onclick = () => { if (this.game && confirm(`Crane ${this.game.skipPrice()} $ zahlen und Nacht ${this.game.night + 1} überspringen?`)) this.game.skipNight(); };
+    $('btnSkipNight').onclick = async () => { if (this.game && await ask(`Crane ${this.game.skipPrice()} $ zahlen und Nacht ${this.game.night + 1} überspringen?`, { ok: 'Bezahlen' })) this.game.skipNight(); };
     $('btnCasClose').onclick = () => this.game && this.game.casino.close();
     $('btnCasResume').onclick = () => { this.ui.modal('casinoMenu', false); this.input.lock(); };
     $('btnCasShop').onclick = () => this.game && this.game.exitCasino();
@@ -190,12 +190,12 @@ class App {
   }
 
   // ---------------- Grafik neu laden, ohne das Spiel zu verlieren ----------------
-  _applyReload() {
+  async _applyReload() {
     const s = this.settings;
     save('hp_settings', s);
     const g = this.game;
     if (g && this.net) {
-      if (!confirm('Neu laden beendet die Mehrspieler-Runde für alle. ' + (g.isHost ? 'Dein Fortschritt wird gespeichert – du kannst ihn danach in der Lobby unter „Spielstand“ fortsetzen. ' : '') + 'Trotzdem neu laden?')) return;
+      if (!(await ask('Neu laden beendet die Mehrspieler-Runde für alle. ' + (g.isHost ? 'Dein Fortschritt wird gespeichert – du kannst ihn danach in der Lobby unter „Spielstand“ fortsetzen. ' : '') + 'Trotzdem neu laden?', { ok: 'Neu laden' }))) return;
       if (g.isHost) g.autosave();
     } else if (g) {
       const d = g.serialize();
@@ -285,12 +285,12 @@ class App {
         : `<button class="btn small primary" data-load="${sv.id}">Laden</button>${auto ? '' : `<button class="btn small" data-ren="${sv.id}">Umbenennen</button>`}<button class="btn small ghost" data-del="${sv.id}">Löschen</button>`;
       return `<div class="save-row${auto ? ' auto' : ''}"><div class="sr-main"><b>${auto ? '🔄 ' : ''}${esc(sv.name)}</b><small>${esc(describeSave(sv.data))}</small><small>${new Date(sv.date).toLocaleString('de-DE')}</small></div><div class="sr-btns">${btns}</div></div>`;
     }).join('');
-    box.onclick = (e) => {
+    box.onclick = async (e) => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.load) { const sv = Saves.get(b.dataset.load); this.ui.modal('saves', false); if (sv) this.startSolo({ save: sv.data }); }
-      else if (b.dataset.over) { if (confirm('Diesen Spielstand überschreiben?')) this._saveTo(b.dataset.over); }
-      else if (b.dataset.ren) { const n = prompt('Neuer Name:', Saves.get(b.dataset.ren).name); if (n) { Saves.rename(b.dataset.ren, n); this._renderSaves(); this.refreshMapLists(); } }
-      else if (b.dataset.del) { if (confirm('Spielstand wirklich löschen?')) { Saves.remove(b.dataset.del); this._renderSaves(); this.refreshMapLists(); } }
+      else if (b.dataset.over) { if (await ask('Diesen Spielstand überschreiben?', { ok: 'Überschreiben' })) this._saveTo(b.dataset.over); }
+      else if (b.dataset.ren) { const n = await ask('Neuer Name:', { input: Saves.get(b.dataset.ren).name }); if (n) { Saves.rename(b.dataset.ren, n); this._renderSaves(); this.refreshMapLists(); } }
+      else if (b.dataset.del) { if (await ask('Spielstand wirklich löschen?', { ok: 'Löschen' })) { Saves.remove(b.dataset.del); this._renderSaves(); this.refreshMapLists(); } }
     };
   }
 

@@ -2,7 +2,7 @@
 // Freischalten: Strg+Shift+G (PC) oder 7× schnell auf die Versionsnummer im Menü tippen (Handy),
 // dann das geheime Passwort eingeben. Im Code steht nur der SHA-256-Hash – das Passwort selbst nicht.
 // Danach: F9 oder der 👑-Knopf öffnet das Menü. Alle Befehle wirken nur als Host bzw. im Einzelspieler.
-import { $, esc } from '../ui/ui.js';
+import { $, esc, ask } from '../ui/ui.js';
 import { LOOT, ICONS } from './items.js';
 import { SHOP } from './shop.js';
 import { MonsterAI, MonsterView, MONSTER_INFO } from './monsters.js';
@@ -38,7 +38,8 @@ export class GodMode {
 
   async toggle() {
     if (!this.unlocked) {
-      const pw = prompt('🔒 Passwort:');
+      this.app.input.unlock();
+      const pw = await ask('🔒 Passwort:', { password: true });
       if (!pw) return;
       if (await sha(pw.trim()) !== HASH) { this.app.ui.toast('Falsch.', '#888', 1.2); return; }
       this.unlocked = true;
