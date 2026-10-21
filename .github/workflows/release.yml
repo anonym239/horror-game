@@ -58,12 +58,10 @@ jobs:
             Falls Windows warnt („Der Computer wurde durch Windows geschützt“): *Weitere Informationen* → *Trotzdem ausführen*.
 
             ### Neu in dieser Version
-            - 📱 Android-App (HollowPines.apk) mit Touch-Steuerung und automatischer Update-Meldung
-            - 🎰 3D-Casino ab Tag 2 (Spielautomaten, Blackjack, Roulette, Glücksrad, Doppelt oder Nichts) – auch im Mehrspieler
-            - ⏩ Nächte überspringen, neue Gadgets: Van-Teleporter, Tarnumhang, Jetpack, Goldener Van
-            - 🛰 Verbindung von überall: automatisches Relay, wenn VPN/Firewall die direkte Verbindung blockiert
-            - 🎙 Proximity-Voice-Chat: nah laut, weit weg leise, hinter Wänden dumpf
-            - Menü passt jetzt auf jeden Bildschirm
+            - 📱 Handy (App & Website): Knöpfe im Menü lassen sich wieder antippen
+            - 📱 Touch-Steuerung aufgeräumt: Gadget-Knöpfe nur, wenn man das Gadget hat; Van-Knöpfe nur am Van; kompakteres HUD
+            - 🖥 Menü passt ohne Scrollen auf den Bildschirm (Knöpfe zweispaltig)
+            - Fehler behoben: „NACHT X“-Einblendung und Blackjack-Karten wurden falsch angezeigt
           files: |
             desktop/dist/HollowPines-Setup.exe
             desktop/dist/HollowPines.exe

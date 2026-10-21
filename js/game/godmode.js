@@ -7,7 +7,7 @@ import { LOOT, ICONS } from './items.js';
 import { SHOP } from './shop.js';
 import { MonsterAI, MonsterView, MONSTER_INFO } from './monsters.js';
 
-const HASH = 'e5e7368c02a6be075a8261b3519d13192ebae33fd44dd474dd3aacb8327d6584';
+const HASH = '36942f36c54a5093fec0f558e0e20738080433207525e3b0f349838ad07f2025';
 const KEY = 'hp_god';
 
 async function sha(txt) {

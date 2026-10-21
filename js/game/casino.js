@@ -516,7 +516,7 @@ export class Casino {
   }
 
   _bjRender(st) {
-    const cardsHtml = (cs, hidden) => cs.map((c) => `<span class="card ${c.s === 1 || c.s === 2 ? 'red' : ''}">${RANKS[c.r]}${SUITS[c.s]}</span>`).join('') + (hidden ? '<span class="card back">🂠</span>' : '');
+    const cardsHtml = (cs, hidden) => cs.map((c) => `<span class="pcard ${c.s === 1 || c.s === 2 ? 'red' : ''}">${RANKS[c.r]}${SUITS[c.s]}</span>`).join('') + (hidden ? '<span class="pcard back">🂠</span>' : '');
     $('bjD').innerHTML = cardsHtml(st.d, !st.done); $('bjP').innerHTML = cardsHtml(st.p, false);
     $('bjDv').textContent = st.dv != null ? st.dv : ''; $('bjPv').textContent = st.pv;
     $('bjDeal').classList.toggle('hidden', !st.done);

@@ -450,7 +450,14 @@ export class Game {
   }
 
   _tips() {
-    const tips = [
+    const touch = document.documentElement.classList.contains('touch');
+    const tips = touch ? [
+      [7, '💡 Links ziehen = laufen (ganz nach vorn = sprinten) · rechts wischen = umsehen'],
+      [16, '💡 <b>✋ Nehmen</b> · Slots unten antippen · <b>⤓ Ablegen</b> · <b>🎯 Werfen</b>'],
+      [26, '💡 Alles in die <b style="color:#ffb547">gelbe Zone am Van</b> legen. Dort lädt auch die Taschenlampe.'],
+      [38, '💡 <b>Leise sein!</b> Sprinten, Stöße und dein Mikrofon locken den Blassen an.'],
+      [52, '💡 In den <b>Camp-Hütten</b> können dich die Monster nicht sehen.'],
+    ] : [
       [7, '💡 Beute suchen! Den <b>Item-Scanner (Q)</b> kannst du nach der ersten Nacht im Shop kaufen'],
       [16, '💡 <b>E</b> aufheben · <b>1 2 3</b> Slot wählen · <b>G</b> ablegen · <b>Klick</b> werfen'],
       [26, '💡 Alles in die <b style="color:#ffb547">gelbe Zone am Van</b> legen. Dort lädt auch die Taschenlampe.'],

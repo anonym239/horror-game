@@ -246,7 +246,7 @@ class App {
     $('lobbySave').innerHTML = `<option value="">Neues Spiel</option>` + saves.map((sv) => `<option value="${sv.id}">${esc(sv.name)} – Nacht ${sv.data.night}</option>`).join('');
     const auto = Saves.get(AUTO_ID);
     $('btnContinue').classList.toggle('hidden', !auto);
-    if (auto) $('btnContinue').textContent = `▶ Weiterspielen (Nacht ${auto.data.night} · ${auto.data.scenario ? auto.data.scenario.name : 'Standard-Camp'})`;
+    if (auto) $('btnContinue').innerHTML = `▶ Weiterspielen<small>Nacht ${auto.data.night} · ${esc(auto.data.scenario ? auto.data.scenario.name : 'Standard-Camp')}</small>`;
   }
 
   /** Welt für ein Szenario bauen (null = Standard). Baut nur neu, wenn sich die Karte ändert. */

@@ -134,5 +134,17 @@ export class TouchControls {
     this.root.classList.toggle('hidden', !playing);
     if (!playing && this.move.id !== null) { this.move.id = null; this._stick(0, 0); }
     if (playing) this.root.classList.toggle('casino', !!g.inCasino);
+    if (playing && (this._visT = (this._visT || 0) - 1) <= 0) { this._visT = 15; this._visibility(g); }
+  }
+
+  /** Nur Knöpfe zeigen, die gerade Sinn ergeben (gekaufte Gadgets, Vorrat, am Van) */
+  _visibility(g) {
+    const u = g.upg || {}, p = g.local.pos;
+    const atVan = g.world && g.world.inVanZone(p.x, p.z, 3);
+    const show = {
+      KeyQ: u.scanner > 0, KeyB: g.boellers > 0, KeyV: g.polen > 0, KeyX: u.xray > 0, KeyT: g.adren > 0,
+      KeyU: g.cloak > 0, KeyK: u.teleport > 0, KeyJ: atVan, KeyR: atVan, KeyH: atVan,
+    };
+    for (const el of this.root.querySelectorAll('.t-gadgets [data-code]')) el.classList.toggle('gone', !show[el.dataset.code]);
   }
 }
